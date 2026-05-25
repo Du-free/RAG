@@ -1,0 +1,61 @@
+﻿server:
+  port: 8083
+
+spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:rag-server/.env[.properties]
+  application:
+    name: rag-demo
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:47.116.133.220}:${MYSQL_PORT:3306}/ai?useUnicode=true&characterEncoding=UTF-8&serverTimezone=GMT%2B8
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+  sql:
+    init:
+      mode: never
+      encoding: UTF-8
+  ai:
+    zhipuai:
+      api-key: ${ZHI_PU_API_KEY}
+      chat:
+        options:
+          model: glm-4.5-air
+          temperature: 0.3
+      embedding:
+        options:
+          model: embedding-3
+    vectorstore:
+      qdrant:
+        host: 47.116.133.220
+        port: 6334
+        api-key: ${QDRANT_API_KEY:}
+        collection-name: rag_demo
+
+        initialize-schema: true
+
+rag:
+  upload-dir: uploads/knowledge
+  chunk-size: 900
+  chunk-overlap: 120
+  top-k: 5
+  similarity-threshold: 0.35
+  rerank-top-n: 5
+  rerank-enabled: true
+
+logging:
+  file:
+    name: logs/rag-server.log
+  level:
+    com.example.ragdemo: debug
+    org.springframework.ai: debug
+    # Web 网络请求层日志
+    org.springframework.web.client: debug
+    # 智谱原生 SDK 日志（若直接调用了 com.zhipu 的类可开启）
+    com.zhipu: debug

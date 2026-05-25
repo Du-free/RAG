@@ -1,0 +1,69 @@
+RAG Demo 测试知识库
+
+一、项目概述
+
+RAG Demo 是一个本地知识库问答系统。用户可以上传 PDF、TXT、MD 文件，系统会解析文档内容，将文本切分成多个片段，并通过智谱 AI 的 embedding-3 模型生成向量。生成的向量会写入 Qdrant 向量数据库，文档元数据、聊天会话和问答来源记录会保存到 MySQL。
+
+本项目后端服务名为 rag-server，使用 Spring Boot 和 Spring AI 开发。后端默认端口是 8083。前端服务名为 rag-web，使用 React 和 Vite 开发。前端主要提供知识库上传、文档列表、聊天问答和来源片段展示功能。
+
+二、服务器与数据库信息
+
+MySQL 部署在云服务器 47.116.133.220 上。因为公网 MySQL 连接可能受到网络或安全策略影响，本地开发时可以通过 SSH 隧道访问 MySQL。推荐的本地隧道端口是 13306，对应服务器上的 127.0.0.1:3306。
+
+Qdrant 也部署在云服务器 47.116.133.220 上。Qdrant 使用 Docker 容器运行，容器名称是 qdrant。Qdrant 的 REST 端口是 6333，gRPC 端口是 6334。当前项目后端通过 gRPC 端口 6334 连接 Qdrant。
+
+Qdrant 的数据目录挂载关系是 /data/qdrant/storage:/qdrant/storage。Qdrant 容器使用的镜像是 docker.m.daocloud.io/qdrant/qdrant:v1.18.0。该镜像来自 DaoCloud 的 Docker 镜像代理，因为服务器直接访问 Docker Hub 时出现过超时问题。
+
+三、Qdrant 配置
+
+Spring AI 中的 Qdrant VectorStore 配置如下：
+
+host 为 47.116.133.220。
+port 为 6334。
+collection-name 为 rag_demo。
+initialize-schema 为 true。
+
+initialize-schema 设置为 true 后，后端启动时会尝试自动创建 rag_demo 集合。如果集合已经存在，后端会继续复用该集合。
+
+四、上传与切分流程
+
+用户上传知识库文件后，后端会先检查文件类型。目前支持的文件类型包括 PDF、TXT 和 MD。上传文件会保存到本地 uploads/knowledge 目录。
+
+文件保存后，后端会使用 Apache Tika 解析文件文本。解析出的长文本会通过 TokenTextSplitter 切分为多个较短片段。每个片段都会带上 document_id、filename、chunk_index 和 vector_id 等元数据。
+
+完成切分后，系统会调用 vectorStore.add 方法把片段写入 Qdrant。写入成功后，系统会把文档状态更新为 READY，并记录 chunk_count。
+
+五、问答流程
+
+用户在聊天框中输入问题后，后端会先保存用户消息，然后使用问题文本在 Qdrant 中进行相似度检索。默认 topK 是 5，相似度阈值是 0.35。
+
+如果没有命中文档片段，系统应该提示用户当前知识库中没有找到足够相关的内容，并建议上传相关资料或换一种问法。
+
+如果命中了文档片段，系统会把命中的片段整理成上下文，然后交给智谱 AI 聊天模型生成回答。回答中应尽量只依据知识库上下文，不要编造文档中不存在的信息。
+
+六、推荐测试问题
+
+问题一：RAG Demo 的后端默认端口是多少？
+参考答案：后端默认端口是 8083。
+
+问题二：Qdrant 的 REST 端口和 gRPC 端口分别是多少？
+参考答案：REST 端口是 6333，gRPC 端口是 6334。
+
+问题三：为什么服务器没有直接使用 qdrant/qdrant:latest？
+参考答案：因为服务器直接访问 Docker Hub 时出现超时问题，所以使用了 DaoCloud 的 Docker 镜像代理 docker.m.daocloud.io/qdrant/qdrant:v1.18.0。
+
+问题四：上传文件后，系统会经过哪些处理步骤？
+参考答案：系统会检查文件类型，保存文件，使用 Apache Tika 解析文本，使用 TokenTextSplitter 切分片段，调用 embedding 模型生成向量并写入 Qdrant，最后把文档元数据和分块信息写入 MySQL。
+
+问题五：如果知识库没有命中相关内容，系统应该怎样回答？
+参考答案：系统应该提示当前知识库中没有找到足够相关的内容，并建议上传相关资料或换一种问法。
+
+七、排障提示
+
+如果前端提示 Invalid CORS request，通常说明后端 CORS 配置没有生效，应该确认后端是否已经重启并加载最新配置。
+
+如果上传文件时报 Qdrant 连接失败，应该检查 qdrant 容器是否正在运行，以及服务器 6334 端口是否可连接。
+
+如果文档列表可以访问但聊天失败，应该检查智谱 AI API Key 是否配置正确，以及模型调用是否返回错误。
+
+如果 MySQL 连接失败，应该先确认云服务器上的 mysqld 服务是否 active。如果本机直连公网 3306 不稳定，可以启动 SSH 隧道，把本地 13306 转发到服务器 127.0.0.1:3306。
