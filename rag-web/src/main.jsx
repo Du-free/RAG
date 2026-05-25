@@ -52,6 +52,28 @@ function percent(value) {
   return `${Number(value || 0).toFixed(2)}%`;
 }
 
+const RAG_SETTING_HELP = {
+  chunkSize: '单个知识片段的目标最大长度；结构化切分仍会用它控制片段上限。',
+  chunkOverlap: '超长段落滑窗切分时的重叠长度，用来避免信息被切断。',
+  topK: '向量检索阶段召回的核心片段数量，值越大越不容易漏，但更慢。',
+  similarityThreshold: '相似度过滤阈值，越高越严格，越低越宽松。',
+  rerankTopN: '大模型重排序后保留给最终回答的来源片段数量。',
+  rerankEnabled: '开启后会让大模型再次筛选来源，通常更准，但会增加耗时和 token。',
+};
+
+// 将表单中的字符串数字统一转成真实数值，方便判断是否存在未保存修改。
+function normalizeSettings(settings) {
+  if (!settings) return null;
+  return {
+    chunkSize: Number(settings.chunkSize),
+    chunkOverlap: Number(settings.chunkOverlap),
+    topK: Number(settings.topK),
+    similarityThreshold: Number(settings.similarityThreshold),
+    rerankTopN: Number(settings.rerankTopN),
+    rerankEnabled: Boolean(settings.rerankEnabled),
+  };
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -342,7 +364,7 @@ function App() {
         <div className="brand-row">
           <Database size={24} />
           <div>
-            <h1>RAG Demo</h1>
+            <h1>RAG</h1>
             <span>本地知识库问答</span>
           </div>
         </div>
@@ -354,8 +376,14 @@ function App() {
           </div>
           <label className="upload-button">
             {uploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />}
-            <span>{uploading ? '导入中' : '上传 PDF/TXT/MD'}</span>
-            <input type="file" accept=".pdf,.txt,.md" multiple onChange={handleUpload} disabled={uploading} />
+            <span>{uploading ? '导入中' : '上传文档'}</span>
+            <input
+              type="file"
+              accept=".pdf,.txt,.md,.markdown,.docx,.xlsx,.csv,.pptx"
+              multiple
+              onChange={handleUpload}
+              disabled={uploading}
+            />
           </label>
           <button className="ghost-button" onClick={loadDocuments}>
             <RefreshCcw size={16} />
@@ -581,29 +609,39 @@ function DebugWorkspace({
   if (!settingsDraft) {
     return <div className="tool-page"><div className="empty-state">正在读取 RAG 参数...</div></div>;
   }
+  const settingsChanged = JSON.stringify(normalizeSettings(settings)) !== JSON.stringify(normalizeSettings(settingsDraft));
 
   return (
     <div className="tool-page">
       <section className="tool-panel">
         <div className="panel-head">
           <h3>运行时参数</h3>
-          <span>{settings?.rerankEnabled ? '重排序已启用' : '重排序未启用'}</span>
+          <div className="settings-actions">
+            <span className={settingsChanged ? 'dirty-badge active' : 'dirty-badge'}>
+              {settingsChanged ? '有未保存修改' : settings?.rerankEnabled ? '重排序已启用' : '重排序未启用'}
+            </span>
+            <button className="primary-button compact-button" onClick={handleSaveSettings} disabled={savingSettings || !settingsChanged}>
+              {savingSettings ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+              <span>保存</span>
+            </button>
+          </div>
         </div>
         <div className="settings-grid">
-          <NumberField label="chunkSize" value={settingsDraft.chunkSize} min={200} max={4000} onChange={(value) => setSettingsDraft({ ...settingsDraft, chunkSize: value })} />
-          <NumberField label="chunkOverlap" value={settingsDraft.chunkOverlap} min={0} max={3999} onChange={(value) => setSettingsDraft({ ...settingsDraft, chunkOverlap: value })} />
-          <NumberField label="topK" value={settingsDraft.topK} min={1} max={20} onChange={(value) => setSettingsDraft({ ...settingsDraft, topK: value })} />
-          <NumberField label="similarityThreshold" value={settingsDraft.similarityThreshold} min={0} max={1} step={0.01} onChange={(value) => setSettingsDraft({ ...settingsDraft, similarityThreshold: value })} />
-          <NumberField label="rerankTopN" value={settingsDraft.rerankTopN} min={1} max={20} onChange={(value) => setSettingsDraft({ ...settingsDraft, rerankTopN: value })} />
+          <NumberField label="chunkSize" description={RAG_SETTING_HELP.chunkSize} value={settingsDraft.chunkSize} min={200} max={4000} onChange={(value) => setSettingsDraft({ ...settingsDraft, chunkSize: value })} />
+          <NumberField label="chunkOverlap" description={RAG_SETTING_HELP.chunkOverlap} value={settingsDraft.chunkOverlap} min={0} max={3999} onChange={(value) => setSettingsDraft({ ...settingsDraft, chunkOverlap: value })} />
+          <NumberField label="topK" description={RAG_SETTING_HELP.topK} value={settingsDraft.topK} min={1} max={20} onChange={(value) => setSettingsDraft({ ...settingsDraft, topK: value })} />
+          <NumberField label="similarityThreshold" description={RAG_SETTING_HELP.similarityThreshold} value={settingsDraft.similarityThreshold} min={0} max={1} step={0.01} onChange={(value) => setSettingsDraft({ ...settingsDraft, similarityThreshold: value })} />
+          <NumberField label="rerankTopN" description={RAG_SETTING_HELP.rerankTopN} value={settingsDraft.rerankTopN} min={1} max={20} onChange={(value) => setSettingsDraft({ ...settingsDraft, rerankTopN: value })} />
           <label className="toggle-field">
             <span>rerankEnabled</span>
+            <small className="field-help">{RAG_SETTING_HELP.rerankEnabled}</small>
             <input type="checkbox" checked={settingsDraft.rerankEnabled} onChange={(event) => setSettingsDraft({ ...settingsDraft, rerankEnabled: event.target.checked })} />
           </label>
         </div>
-        <button className="primary-button" onClick={handleSaveSettings} disabled={savingSettings}>
-          {savingSettings ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-          <span>保存参数</span>
-        </button>
+        {/*<button className="primary-button" onClick={handleSaveSettings} disabled={savingSettings || !settingsChanged}>*/}
+        {/*  {savingSettings ? <Loader2 className="spin" size={16} /> : <Save size={16} />}*/}
+        {/*  <span>{settingsChanged ? '保存运行时参数到数据库' : '参数已是数据库中的最新值'}</span>*/}
+        {/*</button>*/}
       </section>
 
       <section className="tool-panel">
@@ -701,11 +739,12 @@ function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCas
   );
 }
 
-function NumberField({ label, value, min, max, step = 1, onChange }) {
+function NumberField({ label, description, value, min, max, step = 1, onChange }) {
   return (
     <label className="number-field">
       <span>{label}</span>
       <input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(event.target.value)} />
+      {description && <small className="field-help">{description}</small>}
     </label>
   );
 }

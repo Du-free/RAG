@@ -107,4 +107,4 @@ VALUES
 ('Qdrant 容器的数据目录如何挂载？', 'test-rag-knowledge.txt', '挂载关系是 /data/qdrant/storage:/qdrant/storage。', '/data/qdrant/storage,/qdrant/storage'),
 ('前端服务使用什么技术实现？', 'test-rag-knowledge.txt', '前端服务 rag-web 使用 React 和 Vite 开发。', 'React,Vite'),
 ('MySQL 连接失败时推荐怎样处理？', 'test-rag-knowledge.txt', '应确认 mysqld 是否 active；本机直连不稳定时可以启动 SSH 隧道。', 'mysqld,SSH 隧道'),
-('系统支持上传哪些文件类型？', 'test-rag-knowledge.txt', '目前支持 PDF、TXT 和 MD 文件。', 'PDF,TXT,MD');
+('系统支持上传哪些文件类型？', 'test-rag-knowledge.txt', '目前支持 PDF、TXT、MD、DOCX、XLSX、CSV 和 PPTX 文件。', 'PDF,TXT,MD,DOCX,XLSX,CSV,PPTX');

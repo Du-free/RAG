@@ -525,6 +525,30 @@ button {
   font-weight: 700;
 }
 
+.field-help {
+  line-height: 1.45;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.settings-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dirty-badge {
+  color: #667085;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dirty-badge.active {
+  color: #b45309;
+  font-weight: 800;
+}
+
 .number-field input,
 .case-form input,
 .case-form textarea,
@@ -573,6 +597,13 @@ button {
   justify-content: center;
   gap: 8px;
   font-weight: 800;
+}
+
+.compact-button {
+  min-height: 34px;
+  margin: 0;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .primary-button:disabled {
@@ -751,6 +782,84 @@ button {
   .metric-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Light theme contrast: replace acid green with a deep indigo that remains legible on white. */
+.app-shell[data-theme="light"] {
+  --neo-acid: #312e81;
+  --neo-purple: #ccff00;
+  background:
+    linear-gradient(rgba(49, 46, 129, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 46, 129, 0.06) 1px, transparent 1px),
+    radial-gradient(circle at 88% 18%, rgba(99, 102, 241, 0.18), transparent 28%),
+    radial-gradient(circle at 12% 84%, rgba(49, 46, 129, 0.16), transparent 22%),
+    #e5e7eb;
+  background-size: 18px 18px, 18px 18px, auto, auto, auto;
+}
+
+.app-shell[data-theme="light"]::before {
+  background:
+    repeating-linear-gradient(0deg, rgba(49, 46, 129, 0.09) 0 1px, transparent 1px 5px),
+    linear-gradient(90deg, transparent 0 82%, rgba(49, 46, 129, 0.08) 86%, transparent 100%);
+}
+
+.app-shell[data-theme="light"] .sidebar {
+  background:
+    linear-gradient(90deg, rgba(49, 46, 129, 0.12), transparent 22%),
+    repeating-linear-gradient(0deg, rgba(49, 46, 129, 0.055) 0 1px, transparent 1px 6px),
+    var(--neo-bg);
+}
+
+.app-shell[data-theme="light"] .sidebar,
+.app-shell[data-theme="light"] .topbar,
+.app-shell[data-theme="light"] .document-panel,
+.app-shell[data-theme="light"] .chat-panel,
+.app-shell[data-theme="light"] .tool-panel {
+  background:
+    linear-gradient(135deg, rgba(49, 46, 129, 0.04), transparent 36%),
+    var(--neo-panel);
+}
+
+.app-shell[data-theme="light"] .message-list {
+  background:
+    radial-gradient(circle, rgba(49, 46, 129, 0.18) 1px, transparent 1px),
+    transparent;
+  background-size: 18px 18px;
+}
+
+.app-shell[data-theme="light"] .system-status {
+  background:
+    linear-gradient(135deg, rgba(49, 46, 129, 0.1), transparent 45%),
+    transparent;
+}
+
+.app-shell[data-theme="light"] .upload-button:hover,
+.app-shell[data-theme="light"] .ghost-button:hover,
+.app-shell[data-theme="light"] .ghost-button.active,
+.app-shell[data-theme="light"] .session-item:hover,
+.app-shell[data-theme="light"] .session-item.active,
+.app-shell[data-theme="light"] .theme-toggle:hover,
+.app-shell[data-theme="light"] .message-row.user .message-bubble,
+.app-shell[data-theme="light"] .send-button,
+.app-shell[data-theme="light"] .primary-button,
+.app-shell[data-theme="light"] .icon-button.danger:hover {
+  color: #ffffff;
+}
+
+.app-shell[data-theme="light"] .upload-button:hover,
+.app-shell[data-theme="light"] .ghost-button:hover,
+.app-shell[data-theme="light"] .ghost-button.active,
+.app-shell[data-theme="light"] .session-item:hover,
+.app-shell[data-theme="light"] .session-item.active,
+.app-shell[data-theme="light"] .theme-toggle:hover {
+  background:
+    linear-gradient(135deg, rgba(49, 46, 129, 0.96), rgba(49, 46, 129, 0.84)),
+    var(--neo-acid);
+}
+
+.app-shell[data-theme="light"] .send-button:disabled,
+.app-shell[data-theme="light"] .primary-button:disabled {
+  color: #374151;
 }
 
 @media (max-width: 720px) {
@@ -1866,5 +1975,153 @@ body::after {
   .case-item,
   .result-item {
     box-shadow: 4px 4px 0 0 var(--neo-purple);
+  }
+}
+
+/* Scroll containment: keep the shell fixed and delegate scrolling to local panes only. */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  position: sticky;
+  top: 12px;
+  overflow: hidden;
+  gap: 10px;
+  padding: 16px;
+}
+
+.side-section {
+  flex: 0 0 auto;
+  gap: 7px;
+  padding-top: 10px;
+}
+
+.sidebar .upload-button,
+.sidebar .ghost-button,
+.sidebar .session-item {
+  min-height: 36px;
+}
+
+.session-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.session-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.system-status {
+  flex: 0 0 auto;
+  min-height: 56px;
+  padding: 8px 14px;
+}
+
+.workspace {
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.topbar,
+.composer,
+.panel-head {
+  flex: 0 0 auto;
+}
+
+.view-transition {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content-grid {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.document-panel,
+.chat-panel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.document-list,
+.message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.tool-page {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 1080px) {
+  .app-shell {
+    grid-template-columns: 292px minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .sidebar {
+    height: calc(100dvh - 20px);
+    min-height: 0;
+    position: sticky;
+    top: 10px;
+  }
+
+  .workspace {
+    height: calc(100dvh - 20px);
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(260px, 42dvh) minmax(0, 1fr);
+  }
+
+  .sidebar {
+    height: 42dvh;
+    position: relative;
+    top: auto;
+  }
+
+  .workspace {
+    height: calc(58dvh - 30px);
   }
 }

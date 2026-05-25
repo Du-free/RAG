@@ -40,8 +40,18 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RequiredArgsConstructor
 public class KnowledgeService {
 
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("pdf", "txt", "md");
-    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|第[一二三四五六七八九十百千0-9]+[章节篇部分].*|[一二三四五六七八九十]+、.+|\\d+(\\.\\d+)*[、.\\s].+)$");
+    private static final String SUPPORTED_FILE_TYPES_LABEL = "PDF/TXT/MD/DOCX/XLSX/CSV/PPTX";
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
+            "pdf",
+            "txt",
+            "md",
+            "markdown",
+            "docx",
+            "xlsx",
+            "csv",
+            "pptx"
+    );
+    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|第[一二三四五六七八九十百千0-9]+[章节篇部分].*|[一二三四五六七八九十]+、.+|\\d+\\.\\d+(\\.\\d+)*[、.\\s].+)$");
     private static final Pattern PARAGRAPH_SPLITTER = Pattern.compile("\\R{2,}");
 
     private final JdbcTemplate jdbcTemplate;
@@ -131,7 +141,7 @@ public class KnowledgeService {
 
         String extension = getExtension(file.getOriginalFilename());
         if (!SUPPORTED_EXTENSIONS.contains(extension)) {
-            throw new ResponseStatusException(BAD_REQUEST, "仅支持 PDF/TXT/MD 文件");
+            throw new ResponseStatusException(BAD_REQUEST, "仅支持 " + SUPPORTED_FILE_TYPES_LABEL + " 文件");
         }
     }
 
@@ -225,25 +235,40 @@ public class KnowledgeService {
         StringBuilder buffer = new StringBuilder();
         String currentSection = "";
         String bufferSection = "";
+        String bufferStrategy = "paragraph";
         int safeChunkSize = Math.max(chunkSize, 200);
         int safeOverlap = Math.max(Math.min(chunkOverlap, safeChunkSize - 1), 0);
 
         for (ParagraphBlock block : blocks) {
+            if (block.heading()) {
+                flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
+                bufferSection = "";
+                bufferStrategy = "paragraph";
+            }
+
             if (StringUtils.hasText(block.sectionTitle())) {
                 currentSection = block.sectionTitle();
             }
 
+            String blockStrategy = block.tableLike() ? "table" : "paragraph";
+            if (!buffer.isEmpty() && !Objects.equals(bufferStrategy, blockStrategy)) {
+                flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
+                bufferSection = "";
+            }
+
             if (block.text().length() > safeChunkSize) {
-                flushBuffer(chunks, buffer, bufferSection, "paragraph");
-                chunks.addAll(slidingWindow(block.text(), safeChunkSize, safeOverlap, currentSection));
+                flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
+                chunks.addAll(slidingWindow(block.text(), safeChunkSize, safeOverlap, currentSection, blockStrategy + "-sliding-window"));
+                bufferSection = "";
                 continue;
             }
 
             String candidate = buffer.isEmpty() ? block.text() : buffer + "\n\n" + block.text();
             if (candidate.length() > safeChunkSize) {
-                flushBuffer(chunks, buffer, bufferSection, "paragraph");
+                flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
                 buffer.append(block.text());
                 bufferSection = currentSection;
+                bufferStrategy = blockStrategy;
             } else {
                 if (!buffer.isEmpty()) {
                     buffer.append("\n\n");
@@ -252,9 +277,10 @@ public class KnowledgeService {
                 if (!StringUtils.hasText(bufferSection)) {
                     bufferSection = currentSection;
                 }
+                bufferStrategy = blockStrategy;
             }
         }
-        flushBuffer(chunks, buffer, bufferSection, "paragraph");
+        flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
         return chunks;
     }
 
@@ -272,10 +298,12 @@ public class KnowledgeService {
                 continue;
             }
             String firstLine = paragraph.lines().findFirst().orElse("").trim();
-            if (isHeading(firstLine)) {
+            boolean heading = isHeading(firstLine);
+            boolean tableLike = isTableLike(paragraph);
+            if (heading) {
                 currentSection = cleanHeading(firstLine);
             }
-            blocks.add(new ParagraphBlock(paragraph, currentSection));
+            blocks.add(new ParagraphBlock(paragraph, currentSection, heading, tableLike));
         }
         return blocks;
     }
@@ -286,6 +314,25 @@ public class KnowledgeService {
 
     private String cleanHeading(String heading) {
         return heading.replaceFirst("^#{1,6}\\s+", "").trim();
+    }
+
+    private boolean isTableLike(String paragraph) {
+        String[] lines = paragraph.split("\\R");
+        int tabbedLines = 0;
+        int shortCellLines = 0;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (!StringUtils.hasText(trimmed)) {
+                continue;
+            }
+            if (line.indexOf('\t') >= 0) {
+                tabbedLines++;
+            }
+            if (trimmed.length() <= 24 && !isHeading(trimmed)) {
+                shortCellLines++;
+            }
+        }
+        return tabbedLines >= 1 || lines.length >= 3 && shortCellLines >= 2;
     }
 
     private void flushBuffer(List<TextChunk> chunks, StringBuilder buffer, String sectionTitle, String strategy) {
@@ -299,7 +346,7 @@ public class KnowledgeService {
     /**
      * 对单个超长段落做滑窗切分；切分点尽量回退到句号、换行或空格附近，避免从句子中间硬断。
      */
-    private List<TextChunk> slidingWindow(String text, int chunkSize, int overlap, String sectionTitle) {
+    private List<TextChunk> slidingWindow(String text, int chunkSize, int overlap, String sectionTitle, String strategy) {
         List<TextChunk> chunks = new ArrayList<>();
         int start = 0;
         while (start < text.length()) {
@@ -307,7 +354,7 @@ public class KnowledgeService {
             int end = findNaturalBoundary(text, start, preferredEnd);
             String chunk = text.substring(start, end).trim();
             if (StringUtils.hasText(chunk)) {
-                chunks.add(new TextChunk(chunk, Objects.requireNonNullElse(sectionTitle, ""), "sliding-window"));
+                chunks.add(new TextChunk(chunk, Objects.requireNonNullElse(sectionTitle, ""), strategy));
             }
             if (end >= text.length()) {
                 break;
@@ -366,7 +413,7 @@ public class KnowledgeService {
         return Objects.requireNonNullElse(extension, "").toLowerCase(Locale.ROOT);
     }
 
-    private record ParagraphBlock(String text, String sectionTitle) {
+    private record ParagraphBlock(String text, String sectionTitle, boolean heading, boolean tableLike) {
     }
 
     private record TextChunk(String text, String sectionTitle, String strategy) {

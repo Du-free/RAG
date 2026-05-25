@@ -2,7 +2,7 @@ RAG Demo 测试知识库
 
 一、项目概述
 
-RAG Demo 是一个本地知识库问答系统。用户可以上传 PDF、TXT、MD 文件，系统会解析文档内容，将文本切分成多个片段，并通过智谱 AI 的 embedding-3 模型生成向量。生成的向量会写入 Qdrant 向量数据库，文档元数据、聊天会话和问答来源记录会保存到 MySQL。
+RAG Demo 是一个本地知识库问答系统。用户可以上传 PDF、TXT、MD、DOCX、XLSX、CSV、PPTX 文件，系统会解析文档内容，将文本切分成多个片段，并通过智谱 AI 的 embedding-3 模型生成向量。生成的向量会写入 Qdrant 向量数据库，文档元数据、聊天会话和问答来源记录会保存到 MySQL。
 
 本项目后端服务名为 rag-server，使用 Spring Boot 和 Spring AI 开发。后端默认端口是 8083。前端服务名为 rag-web，使用 React 和 Vite 开发。前端主要提供知识库上传、文档列表、聊天问答和来源片段展示功能。
 
@@ -27,9 +27,9 @@ initialize-schema 设置为 true 后，后端启动时会尝试自动创建 rag_
 
 四、上传与切分流程
 
-用户上传知识库文件后，后端会先检查文件类型。目前支持的文件类型包括 PDF、TXT 和 MD。上传文件会保存到本地 uploads/knowledge 目录。
+用户上传知识库文件后，后端会先检查文件类型。目前支持的文件类型包括 PDF、TXT、MD、DOCX、XLSX、CSV 和 PPTX。上传文件会保存到本地 uploads/knowledge 目录。
 
-文件保存后，后端会使用 Apache Tika 解析文件文本。解析出的长文本会通过 TokenTextSplitter 切分为多个较短片段。每个片段都会带上 document_id、filename、chunk_index 和 vector_id 等元数据。
+文件保存后，后端会使用 Apache Tika 解析文件文本。解析出的长文本会优先按标题和段落进行结构化切分，超长段落再使用滑窗切分。每个片段都会带上 document_id、filename、chunk_index 和 vector_id 等元数据。
 
 完成切分后，系统会调用 vectorStore.add 方法把片段写入 Qdrant。写入成功后，系统会把文档状态更新为 READY，并记录 chunk_count。
 
@@ -53,7 +53,7 @@ initialize-schema 设置为 true 后，后端启动时会尝试自动创建 rag_
 参考答案：因为服务器直接访问 Docker Hub 时出现超时问题，所以使用了 DaoCloud 的 Docker 镜像代理 docker.m.daocloud.io/qdrant/qdrant:v1.18.0。
 
 问题四：上传文件后，系统会经过哪些处理步骤？
-参考答案：系统会检查文件类型，保存文件，使用 Apache Tika 解析文本，使用 TokenTextSplitter 切分片段，调用 embedding 模型生成向量并写入 Qdrant，最后把文档元数据和分块信息写入 MySQL。
+参考答案：系统会检查文件类型，保存文件，使用 Apache Tika 解析文本，优先按标题和段落切分片段，调用 embedding 模型生成向量并写入 Qdrant，最后把文档元数据和分块信息写入 MySQL。
 
 问题五：如果知识库没有命中相关内容，系统应该怎样回答？
 参考答案：系统应该提示当前知识库中没有找到足够相关的内容，并建议上传相关资料或换一种问法。
