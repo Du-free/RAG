@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +77,19 @@ public class EvaluationService {
             throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "创建评测用例失败");
         }
         return getCase(key.longValue());
+    }
+
+    /**
+     * 删除用例库中的评测问题；历史评测结果保留问题和答案快照，不随用例一起删除。
+     */
+    public void deleteCase(Long id) {
+        int affectedRows = jdbcTemplate.update("""
+                DELETE FROM rag_evaluation_case
+                WHERE id = ?
+                """, id);
+        if (affectedRows == 0) {
+            throw new ResponseStatusException(NOT_FOUND, "评测用例不存在");
+        }
     }
 
     /**

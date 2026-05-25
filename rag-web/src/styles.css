@@ -726,6 +726,23 @@ button {
   gap: 6px;
 }
 
+.case-item-head {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.case-item-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.case-item-head .icon-button {
+  flex: 0 0 34px;
+}
+
 .case-item span,
 .result-item span {
   color: #64748b;
@@ -787,7 +804,6 @@ button {
 /* Light theme contrast: replace acid green with a deep indigo that remains legible on white. */
 .app-shell[data-theme="light"] {
   --neo-acid: #312e81;
-  --neo-purple: #ccff00;
   background:
     linear-gradient(rgba(49, 46, 129, 0.075) 1px, transparent 1px),
     linear-gradient(90deg, rgba(49, 46, 129, 0.06) 1px, transparent 1px),
@@ -860,6 +876,331 @@ button {
 .app-shell[data-theme="light"] .send-button:disabled,
 .app-shell[data-theme="light"] .primary-button:disabled {
   color: #374151;
+}
+
+/* Final evaluation-page layout override: compact dashboard, not stacked strips. */
+.tool-page.evaluation-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden !important;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.35fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 14px;
+}
+
+.tool-page.evaluation-page .evaluation-overview {
+  grid-column: 1 / -1;
+  grid-row: 1 / 2;
+}
+
+.tool-page.evaluation-page .evaluation-form-panel {
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+}
+
+.tool-page.evaluation-page .evaluation-cases-panel {
+  grid-column: 1 / 2;
+  grid-row: 3 / 4;
+}
+
+.tool-page.evaluation-page .evaluation-results-panel {
+  grid-column: 2 / 3;
+  grid-row: 2 / 4;
+}
+
+.tool-page.evaluation-page.no-results .evaluation-cases-panel {
+  grid-column: 2 / 3;
+  grid-row: 2 / 4;
+}
+
+.tool-page.evaluation-page .tool-panel {
+  min-height: 0;
+}
+
+.tool-page.evaluation-page .panel-head {
+  min-height: 46px;
+  height: auto;
+  padding: 10px 16px;
+}
+
+.tool-page.evaluation-page .evaluation-overview {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.tool-page.evaluation-page .evaluation-overview .metric-row {
+  padding: 10px 16px 14px;
+}
+
+.tool-page.evaluation-page .metric-card {
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.tool-page.evaluation-page .evaluation-overview > .primary-button {
+  min-width: 144px;
+  min-height: 44px;
+  margin: 12px 16px 12px 0;
+}
+
+.tool-page.evaluation-page .case-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+
+.tool-page.evaluation-page .case-form input,
+.tool-page.evaluation-page .case-form textarea {
+  min-height: 38px;
+}
+
+.tool-page.evaluation-page .case-form textarea,
+.tool-page.evaluation-page .case-form .primary-button {
+  grid-column: 1 / -1;
+}
+
+.tool-page.evaluation-page .case-form textarea {
+  max-height: 96px;
+}
+
+.tool-page.evaluation-page .evaluation-cases-panel,
+.tool-page.evaluation-page .evaluation-results-panel {
+  overflow: hidden;
+}
+
+.tool-page.evaluation-page .case-list,
+.tool-page.evaluation-page .result-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 16px;
+}
+
+.tool-page.evaluation-page .case-item,
+.tool-page.evaluation-page .result-item {
+  padding: 10px 12px;
+}
+
+@media (max-width: 1280px) {
+  .tool-page.evaluation-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .tool-page.evaluation-page .evaluation-overview,
+  .tool-page.evaluation-page .evaluation-form-panel,
+  .tool-page.evaluation-page .evaluation-cases-panel,
+  .tool-page.evaluation-page .evaluation-results-panel {
+    grid-column: 1 / -1;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview {
+    grid-row: 1 / 2;
+  }
+
+  .tool-page.evaluation-page .evaluation-form-panel {
+    grid-row: 2 / 3;
+  }
+
+  .tool-page.evaluation-page .evaluation-cases-panel,
+  .tool-page.evaluation-page .evaluation-results-panel {
+    grid-row: 3 / 4;
+  }
+
+  .tool-page.evaluation-page .evaluation-results-panel + .evaluation-cases-panel {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .tool-page.evaluation-page .metric-row,
+  .tool-page.evaluation-page .case-form {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview > .primary-button {
+    width: calc(100% - 32px);
+    margin: 0 16px 14px;
+  }
+}
+
+/* Evaluation workspace: tighter information hierarchy and local scrolling panes. */
+.evaluation-page {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(460px, 1.35fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.evaluation-page .tool-panel {
+  min-width: 0;
+  min-height: 0;
+  box-shadow: 4px 4px 0 0 var(--neo-purple);
+}
+
+.evaluation-overview {
+  grid-column: 1 / -1;
+}
+
+.evaluation-form-panel {
+  grid-column: 1 / 2;
+}
+
+.evaluation-cases-panel {
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+}
+
+.evaluation-results-panel {
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
+}
+
+.evaluation-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+.evaluation-overview .panel-head {
+  height: auto;
+  min-height: 54px;
+  border-bottom: 0;
+  padding: 12px 16px;
+}
+
+.evaluation-overview .metric-row {
+  padding: 12px 16px 14px;
+  grid-column: 1 / 2;
+}
+
+.evaluation-overview > .primary-button {
+  grid-column: 2 / 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  min-width: 150px;
+  min-height: 48px;
+  margin: 14px 16px 14px 0;
+}
+
+.evaluation-page .metric-row {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.evaluation-page .metric-card {
+  min-height: 72px;
+  padding: 12px;
+  box-shadow: 3px 3px 0 0 var(--neo-purple);
+  background:
+    linear-gradient(135deg, rgba(99, 102, 241, 0.08), transparent 48%),
+    var(--neo-panel-strong);
+}
+
+.evaluation-page .metric-card strong {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.evaluation-form-panel {
+  align-self: start;
+}
+
+.evaluation-form-panel .case-form {
+  grid-template-columns: 1fr;
+  padding: 14px 16px 16px;
+}
+
+.evaluation-form-panel .case-form input,
+.evaluation-form-panel .case-form textarea {
+  min-height: 40px;
+}
+
+.evaluation-form-panel .case-form .primary-button {
+  width: 100%;
+  min-height: 42px;
+}
+
+.evaluation-cases-panel,
+.evaluation-results-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.evaluation-cases-panel .case-list,
+.evaluation-results-panel .result-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 14px 16px 16px;
+}
+
+.evaluation-page .case-item,
+.evaluation-page .result-item {
+  box-shadow: 3px 3px 0 0 var(--neo-purple);
+}
+
+.evaluation-page .case-item:hover,
+.evaluation-page .result-item:hover {
+  box-shadow: 5px 5px 0 0 var(--neo-acid);
+}
+
+.evaluation-page .case-item p,
+.evaluation-page .result-item p {
+  margin-top: 8px;
+  max-height: 4.8em;
+  overflow: hidden;
+}
+
+.evaluation-page .result-title {
+  align-items: flex-start;
+}
+
+.evaluation-page .result-title strong {
+  min-width: 0;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .evaluation-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .evaluation-overview,
+  .evaluation-form-panel,
+  .evaluation-cases-panel,
+  .evaluation-results-panel {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .evaluation-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .evaluation-overview > .primary-button {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    width: calc(100% - 32px);
+    margin: 0 16px 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .evaluation-page .metric-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2123,5 +2464,349 @@ body {
 
   .workspace {
     height: calc(58dvh - 30px);
+  }
+}
+
+/* Evaluation page final pass: compact panels and local list scrolling. */
+.tool-page.evaluation-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.35fr);
+  grid-template-rows: auto auto minmax(120px, 1fr);
+  align-content: stretch;
+  gap: 14px;
+}
+
+.tool-page.evaluation-page .evaluation-overview {
+  grid-column: 1 / -1;
+  grid-row: 1 / 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+}
+
+.tool-page.evaluation-page .evaluation-form-panel {
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+}
+
+.tool-page.evaluation-page .evaluation-cases-panel {
+  grid-column: 1 / 2;
+  grid-row: 3 / 4;
+}
+
+.tool-page.evaluation-page .evaluation-results-panel {
+  grid-column: 2 / 3;
+  grid-row: 2 / 4;
+}
+
+.tool-page.evaluation-page .tool-panel {
+  min-width: 0;
+  min-height: 0;
+  box-shadow: 4px 4px 0 0 var(--neo-purple);
+}
+
+.tool-page.evaluation-page .panel-head {
+  min-height: 42px;
+  height: auto;
+  padding: 10px 16px;
+}
+
+.tool-page.evaluation-page .evaluation-overview .panel-head {
+  border-bottom: 0;
+}
+
+.tool-page.evaluation-page .evaluation-overview .metric-row {
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+  padding: 8px 16px 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tool-page.evaluation-page .evaluation-overview > .primary-button {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
+  align-self: center;
+  min-width: 136px;
+  min-height: 42px;
+  margin: 10px 16px 10px 0;
+}
+
+.tool-page.evaluation-page .metric-card {
+  min-height: 56px;
+  padding: 10px 12px;
+  box-shadow: 3px 3px 0 0 var(--neo-purple);
+}
+
+.tool-page.evaluation-page .metric-card strong {
+  font-size: 19px;
+  line-height: 1.1;
+}
+
+.tool-page.evaluation-page .case-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+
+.tool-page.evaluation-page .case-form input,
+.tool-page.evaluation-page .case-form textarea {
+  min-height: 34px;
+  padding: 8px 10px;
+}
+
+.tool-page.evaluation-page .case-form textarea,
+.tool-page.evaluation-page .case-form .primary-button {
+  grid-column: 1 / -1;
+}
+
+.tool-page.evaluation-page .case-form textarea {
+  min-height: 58px;
+  max-height: 58px;
+}
+
+.tool-page.evaluation-page .case-form .primary-button {
+  min-height: 36px;
+}
+
+.tool-page.evaluation-page .evaluation-cases-panel,
+.tool-page.evaluation-page .evaluation-results-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tool-page.evaluation-page .case-list,
+.tool-page.evaluation-page .result-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 12px 16px 16px;
+}
+
+.tool-page.evaluation-page .case-item,
+.tool-page.evaluation-page .result-item {
+  padding: 10px 12px;
+  box-shadow: 3px 3px 0 0 var(--neo-purple);
+}
+
+.tool-page.evaluation-page .case-item p,
+.tool-page.evaluation-page .result-item p {
+  max-height: 4.8em;
+  overflow: hidden;
+}
+
+@media (max-width: 1280px) {
+  .tool-page.evaluation-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(120px, 1fr);
+  }
+
+  .tool-page.evaluation-page .evaluation-overview,
+  .tool-page.evaluation-page .evaluation-form-panel,
+  .tool-page.evaluation-page .evaluation-cases-panel,
+  .tool-page.evaluation-page .evaluation-results-panel {
+    grid-column: 1 / -1;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview {
+    grid-row: 1 / 2;
+  }
+
+  .tool-page.evaluation-page .evaluation-form-panel {
+    grid-row: 2 / 3;
+  }
+
+  .tool-page.evaluation-page .evaluation-cases-panel,
+  .tool-page.evaluation-page .evaluation-results-panel {
+    grid-row: 3 / 4;
+  }
+
+  .tool-page.evaluation-page.no-results .evaluation-cases-panel {
+    grid-column: 1 / -1;
+    grid-row: 3 / 4;
+  }
+}
+
+@media (max-width: 720px) {
+  .tool-page.evaluation-page .evaluation-overview,
+  .tool-page.evaluation-page .case-form {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview .metric-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-page.evaluation-page .evaluation-overview > .primary-button {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    width: calc(100% - 32px);
+    margin: 0 16px 14px;
+  }
+}
+
+/* Keep latest evaluation results readable: the panel owns scrolling, answers are not clipped. */
+.tool-page.evaluation-page .evaluation-results-panel {
+  min-height: 0;
+}
+
+.tool-page.evaluation-page .evaluation-results-panel .result-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.tool-page.evaluation-page .evaluation-results-panel .result-item {
+  min-height: auto;
+}
+
+.tool-page.evaluation-page .evaluation-results-panel .result-item p {
+  max-height: none;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+@media (max-width: 1280px) {
+  .tool-page.evaluation-page {
+    grid-template-rows: auto auto minmax(260px, 42dvh) minmax(220px, 32dvh);
+    overflow: hidden auto !important;
+  }
+
+  .tool-page.evaluation-page .evaluation-results-panel {
+    grid-row: 3 / 4;
+  }
+
+  .tool-page.evaluation-page .evaluation-cases-panel {
+    grid-row: 4 / 5;
+  }
+
+  .tool-page.evaluation-page.no-results .evaluation-cases-panel {
+    grid-row: 3 / 5;
+  }
+}
+
+/* Debug page: keep the query form stable and scroll only the generated debug output. */
+.tool-page.debug-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 14px;
+}
+
+.debug-page .tool-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.debug-page .evaluation-overview,
+.debug-page .evaluation-form-panel {
+  grid-column: auto;
+  grid-row: auto;
+  align-self: stretch;
+}
+
+.debug-page .evaluation-overview {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.debug-page .evaluation-overview .panel-head {
+  height: auto;
+  min-height: 54px;
+  border-bottom: 2px solid var(--neo-border);
+}
+
+.debug-page .settings-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.debug-page .evaluation-form-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.debug-page .debug-box {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+.debug-page .debug-box textarea {
+  min-height: 98px;
+  max-height: 140px;
+  resize: vertical;
+}
+
+.debug-page .debug-box .primary-button {
+  align-self: start;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.debug-page .debug-result {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  border-top: 2px solid var(--neo-border);
+  padding: 14px 16px 16px;
+  align-content: start;
+}
+
+.debug-page .debug-result > div:first-child {
+  min-width: 0;
+}
+
+.debug-page .debug-result > div:first-child p,
+.debug-page .debug-sources p {
+  max-height: none;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .tool-page.debug-page {
+    grid-template-rows: auto minmax(260px, 1fr);
+    overflow: hidden auto;
+  }
+
+  .debug-page .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .debug-page .debug-box {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-page .debug-box .primary-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .tool-page.debug-page {
+    overflow-y: auto;
+  }
+
+  .debug-page .settings-grid {
+    grid-template-columns: 1fr;
   }
 }

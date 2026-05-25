@@ -289,7 +289,7 @@ public class KnowledgeService {
      */
     private List<ParagraphBlock> parseParagraphBlocks(String text) {
         String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
-        String[] parts = PARAGRAPH_SPLITTER.split(normalized);
+        List<String> parts = splitSemanticParts(normalized);
         List<ParagraphBlock> blocks = new ArrayList<>();
         String currentSection = "";
         for (String part : parts) {
@@ -306,6 +306,39 @@ public class KnowledgeService {
             blocks.add(new ParagraphBlock(paragraph, currentSection, heading, tableLike));
         }
         return blocks;
+    }
+
+    /**
+     * Tika 解析 DOCX 时经常只用单换行分隔标题和正文；这里在标题行出现时主动断开，
+     * 避免“2.2 小节内容”被并入前后多个小节形成过大的混合 chunk。
+     */
+    private List<String> splitSemanticParts(String text) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder buffer = new StringBuilder();
+        for (String line : text.split("\\n")) {
+            String trimmed = line.trim();
+            if (!StringUtils.hasText(trimmed)) {
+                flushPart(parts, buffer);
+                continue;
+            }
+            if (isHeading(trimmed)) {
+                flushPart(parts, buffer);
+            }
+            if (!buffer.isEmpty()) {
+                buffer.append("\n");
+            }
+            buffer.append(trimmed);
+        }
+        flushPart(parts, buffer);
+        return parts;
+    }
+
+    private void flushPart(List<String> parts, StringBuilder buffer) {
+        String value = buffer.toString().trim();
+        if (StringUtils.hasText(value)) {
+            parts.add(value);
+            buffer.setLength(0);
+        }
     }
 
     private boolean isHeading(String line) {

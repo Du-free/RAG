@@ -103,7 +103,7 @@ function App() {
   const [activeChatId, setActiveChatId] = React.useState(createId());
   const [messages, setMessages] = React.useState([]);
   const [question, setQuestion] = React.useState('');
-  const [debugQuestion, setDebugQuestion] = React.useState('Qdrant 的 REST 端口和 gRPC 端口分别是多少？');
+  const [debugQuestion, setDebugQuestion] = React.useState('');
   const [debugResult, setDebugResult] = React.useState(null);
   const [evaluationCases, setEvaluationCases] = React.useState([]);
   const [evaluationRuns, setEvaluationRuns] = React.useState([]);
@@ -333,6 +333,19 @@ function App() {
     }
   }
 
+  async function handleDeleteCase(id, questionText) {
+    const allowed = window.confirm(`确认删除评测用例「${questionText}」吗？历史评测结果不会被删除。`);
+    if (!allowed) return;
+
+    setError('');
+    try {
+      await fetchJson(`${API_BASE}/api/evaluation/cases/${id}`, { method: 'DELETE' });
+      await loadEvaluation();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function handleRunEvaluation() {
     setEvaluating(true);
     setError('');
@@ -492,6 +505,7 @@ function App() {
               newCase={newCase}
               setNewCase={setNewCase}
               handleCreateCase={handleCreateCase}
+              handleDeleteCase={handleDeleteCase}
               handleRunEvaluation={handleRunEvaluation}
               evaluating={evaluating}
             />
@@ -612,8 +626,8 @@ function DebugWorkspace({
   const settingsChanged = JSON.stringify(normalizeSettings(settings)) !== JSON.stringify(normalizeSettings(settingsDraft));
 
   return (
-    <div className="tool-page">
-      <section className="tool-panel">
+    <div className="tool-page debug-page">
+      <section className="tool-panel evaluation-overview">
         <div className="panel-head">
           <h3>运行时参数</h3>
           <div className="settings-actions">
@@ -644,7 +658,7 @@ function DebugWorkspace({
         {/*</button>*/}
       </section>
 
-      <section className="tool-panel">
+      <section className="tool-panel evaluation-form-panel">
         <div className="panel-head">
           <h3>检索调试</h3>
           <span>候选片段 + 重排序结果</span>
@@ -662,11 +676,11 @@ function DebugWorkspace({
   );
 }
 
-function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCase, handleRunEvaluation, evaluating }) {
+function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCase, handleDeleteCase, handleRunEvaluation, evaluating }) {
   const latestRun = runs[0];
   return (
-    <div className="tool-page">
-      <section className="tool-panel">
+    <div className={`tool-page evaluation-page ${latestRun ? 'has-results' : 'no-results'}`}>
+      <section className="tool-panel evaluation-overview">
         <div className="panel-head">
           <h3>评测总览</h3>
           <span>{cases.length} 个用例</span>
@@ -682,7 +696,7 @@ function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCas
         </button>
       </section>
 
-      <section className="tool-panel">
+      <section className="tool-panel evaluation-form-panel">
         <div className="panel-head">
           <h3>新增评测问题</h3>
           <span>逗号分隔关键词</span>
@@ -699,7 +713,7 @@ function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCas
         </div>
       </section>
 
-      <section className="tool-panel">
+      <section className="tool-panel evaluation-cases-panel">
         <div className="panel-head">
           <h3>评测用例</h3>
           <span>{cases.length} 条</span>
@@ -707,7 +721,12 @@ function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCas
         <div className="case-list">
           {cases.map((item) => (
             <article className="case-item" key={item.id}>
-              <strong>{item.question}</strong>
+              <div className="case-item-head">
+                <strong>{item.question}</strong>
+                <button className="icon-button danger" onClick={() => handleDeleteCase(item.id, item.question)} title="删除用例" type="button">
+                  <Trash2 size={16} />
+                </button>
+              </div>
               <span>{item.expectedDocument || '未指定来源'} · {item.expectedKeywords || '未指定关键词'}</span>
               {item.referenceAnswer && <p>{item.referenceAnswer}</p>}
             </article>
@@ -716,7 +735,7 @@ function EvaluationWorkspace({ cases, runs, newCase, setNewCase, handleCreateCas
       </section>
 
       {latestRun && (
-        <section className="tool-panel">
+        <section className="tool-panel evaluation-results-panel">
           <div className="panel-head">
             <h3>最近一次结果</h3>
             <span>{formatTime(latestRun.createTime)}</span>

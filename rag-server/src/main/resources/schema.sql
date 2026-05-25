@@ -95,16 +95,3 @@ CREATE TABLE IF NOT EXISTS rag_evaluation_result (
   PRIMARY KEY (id),
   KEY idx_rag_eval_result_run_id (run_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG评测结果表';
-
-INSERT IGNORE INTO rag_evaluation_case(question, expected_document, reference_answer, expected_keywords)
-VALUES
-('RAG Demo 的后端默认端口是多少？', 'test-rag-knowledge.txt', '后端默认端口是 8083。', '8083,后端'),
-('Qdrant 的 REST 端口和 gRPC 端口分别是多少？', 'test-rag-knowledge.txt', 'REST 端口是 6333，gRPC 端口是 6334。', '6333,6334'),
-('为什么服务器没有直接使用 qdrant/qdrant:latest？', 'test-rag-knowledge.txt', '因为服务器访问 Docker Hub 超时，所以使用 DaoCloud 镜像代理。', 'Docker Hub,DaoCloud'),
-('上传文件后系统会经过哪些处理步骤？', 'test-rag-knowledge.txt', '系统会检查文件类型、保存文件、解析文本、切分片段、生成向量并写入 Qdrant，同时记录 MySQL 元数据。', '解析,切分,Qdrant,MySQL'),
-('如果知识库没有命中相关内容，系统应该怎样回答？', 'test-rag-knowledge.txt', '应提示当前知识库没有找到足够相关内容，并建议上传相关资料或换一种问法。', '没有找到,上传相关资料'),
-('本项目使用哪个 embedding 模型？', 'test-rag-knowledge.txt', '本项目使用智谱 AI 的 embedding-3 模型生成向量。', 'embedding-3'),
-('Qdrant 容器的数据目录如何挂载？', 'test-rag-knowledge.txt', '挂载关系是 /data/qdrant/storage:/qdrant/storage。', '/data/qdrant/storage,/qdrant/storage'),
-('前端服务使用什么技术实现？', 'test-rag-knowledge.txt', '前端服务 rag-web 使用 React 和 Vite 开发。', 'React,Vite'),
-('MySQL 连接失败时推荐怎样处理？', 'test-rag-knowledge.txt', '应确认 mysqld 是否 active；本机直连不稳定时可以启动 SSH 隧道。', 'mysqld,SSH 隧道'),
-('系统支持上传哪些文件类型？', 'test-rag-knowledge.txt', '目前支持 PDF、TXT、MD、DOCX、XLSX、CSV 和 PPTX 文件。', 'PDF,TXT,MD,DOCX,XLSX,CSV,PPTX');

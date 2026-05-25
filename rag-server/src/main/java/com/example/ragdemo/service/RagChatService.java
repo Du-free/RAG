@@ -1,12 +1,6 @@
 package com.example.ragdemo.service;
 
-import com.example.ragdemo.dto.ChatMessageResponse;
-import com.example.ragdemo.dto.RagChatRequest;
-import com.example.ragdemo.dto.RagChatResponse;
-import com.example.ragdemo.dto.RagDebugRequest;
-import com.example.ragdemo.dto.RagDebugResponse;
-import com.example.ragdemo.dto.RagSettingsResponse;
-import com.example.ragdemo.dto.SourceResponse;
+import com.example.ragdemo.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -24,12 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -202,18 +191,30 @@ public class RagChatService {
     }
 
     private List<String> extractTerms(String question) {
-        List<String> terms = new ArrayList<>();
+        Set<String> terms = new LinkedHashSet<>();
         for (String token : TOKEN_SPLITTER.split(question)) {
             String trimmed = token.trim();
-            if (trimmed.length() >= 2 && terms.size() < 4) {
+            if (trimmed.length() >= 2 && terms.size() < 6) {
                 terms.add(trimmed);
             }
         }
         String compact = question.replaceAll("[\\s,，。！？?；;：:、]", "").trim();
-        if (compact.length() >= 4 && compact.length() <= 24 && !terms.contains(compact)) {
+        if (compact.length() >= 4 && compact.length() <= 24) {
             terms.add(compact);
         }
-        return terms;
+        String core = compact
+                .replaceAll("^(请问|请解释|解释一下|介绍一下|说明一下|什么是)", "")
+                .replaceAll("(是什么|有哪些|有什么|为什么|怎么做|如何|吗|呢)$", "");
+        if (core.length() >= 2 && core.length() <= 24) {
+            terms.add(core);
+        }
+        // 中文问题通常没有空格分词，补充较长 n-gram 可让“电网潮流图是什么”命中“电网潮流图”。
+        for (int size = Math.min(6, core.length()); size >= 3 && terms.size() < 10; size--) {
+            for (int start = 0; start + size <= core.length() && terms.size() < 10; start++) {
+                terms.add(core.substring(start, start + size));
+            }
+        }
+        return new ArrayList<>(terms);
     }
 
     private List<SourceResponse> rerank(String question, List<SourceResponse> candidates, RagSettingsResponse settings) {
@@ -221,8 +222,11 @@ public class RagChatService {
         if (selectSize == 0) {
             return List.of();
         }
-        if (!settings.rerankEnabled() || candidates.size() <= selectSize) {
+        if (!settings.rerankEnabled()) {
             return assignRank(candidates.subList(0, selectSize), "未启用重排序");
+        }
+        if (candidates.size() <= selectSize) {
+            return assignRank(candidates.subList(0, selectSize), "候选片段数量未超过保留数量，跳过 LLM 重排序");
         }
 
         StringBuilder prompt = new StringBuilder();
