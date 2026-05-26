@@ -20,10 +20,13 @@ CREATE TABLE IF NOT EXISTS rag_document_chunk (
   vector_id VARCHAR(96) NOT NULL COMMENT 'Qdrant向量ID',
   chunk_index INT NOT NULL COMMENT '分块序号',
   content MEDIUMTEXT NOT NULL COMMENT '分块内容',
+  section_title VARCHAR(255) NULL COMMENT '分块所属章节标题',
+  split_strategy VARCHAR(64) NULL COMMENT '分块策略，如 paragraph/table/code',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_rag_chunk_vector_id (vector_id),
-  KEY idx_rag_chunk_document_id (document_id)
+  KEY idx_rag_chunk_document_id (document_id),
+  FULLTEXT KEY ft_rag_chunk_content (content)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG文档分块表';
 
 CREATE TABLE IF NOT EXISTS rag_chat_message (

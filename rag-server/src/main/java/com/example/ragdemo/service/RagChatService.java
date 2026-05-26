@@ -7,6 +7,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -145,20 +146,65 @@ public class RagChatService {
             merged.putIfAbsent(source.chunkId(), source);
         }
 
-        for (SourceResponse source : keywordSearch(question, recallTopK)) {
+        for (SourceResponse source : fullTextSearch(question, recallTopK)) {
             merged.putIfAbsent(source.chunkId(), source);
         }
         return new ArrayList<>(merged.values());
     }
 
-    private List<SourceResponse> keywordSearch(String question, int limit) {
+    /**
+     * MySQL FULLTEXT 召回用于补齐向量召回漏掉的精确词命中；如果旧库没有全文索引或中文分词命中为空，再退回 LIKE 兜底。
+     */
+    private List<SourceResponse> fullTextSearch(String question, int limit) {
         List<String> terms = extractTerms(question);
         if (terms.isEmpty()) {
             return List.of();
         }
 
+        String searchText = buildFullTextQuery(question, terms);
+        try {
+            List<SourceResponse> fullTextMatches = jdbcTemplate.query("""
+                    SELECT c.document_id,
+                           d.filename,
+                           c.vector_id,
+                           c.content,
+                           c.section_title,
+                           MATCH(c.content) AGAINST (? IN NATURAL LANGUAGE MODE) AS text_score
+                    FROM rag_document_chunk c
+                    JOIN rag_document d ON d.id = c.document_id
+                    WHERE d.status = 'READY'
+                      AND MATCH(c.content) AGAINST (? IN NATURAL LANGUAGE MODE) > 0
+                    ORDER BY text_score DESC, c.id DESC
+                    LIMIT ?
+                    """, (rs, rowNum) -> new SourceResponse(
+                    rs.getLong("document_id"),
+                    rs.getString("filename"),
+                    rs.getString("vector_id"),
+                    truncate(rs.getString("content"), 900),
+                    rs.getDouble("text_score"),
+                    null,
+                    rowNum + 1,
+                    "全文召回",
+                    "fulltext",
+                    Objects.toString(rs.getString("section_title"), "")
+            ), searchText, searchText, limit);
+            if (!fullTextMatches.isEmpty()) {
+                return fullTextMatches;
+            }
+        } catch (DataAccessException ex) {
+            log.warn("MySQL FULLTEXT 召回失败，退回 LIKE 召回。原因：{}", ex.getMessage());
+        }
+
+        return likeSearch(terms, limit);
+    }
+
+    private List<SourceResponse> likeSearch(List<String> terms, int limit) {
+        if (terms.isEmpty()) {
+            return List.of();
+        }
+
         StringBuilder sql = new StringBuilder("""
-                SELECT c.document_id, d.filename, c.vector_id, c.content
+                SELECT c.document_id, d.filename, c.vector_id, c.content, c.section_title
                 FROM rag_document_chunk c
                 JOIN rag_document d ON d.id = c.document_id
                 WHERE d.status = 'READY' AND (
@@ -186,8 +232,15 @@ public class RagChatService {
                 rowNum + 1,
                 "关键词召回",
                 "keyword",
-                ""
+                Objects.toString(rs.getString("section_title"), "")
         ), args.toArray());
+    }
+
+    private String buildFullTextQuery(String question, List<String> terms) {
+        LinkedHashSet<String> queryTerms = new LinkedHashSet<>();
+        queryTerms.add(question.trim());
+        queryTerms.addAll(terms);
+        return String.join(" ", queryTerms);
     }
 
     private List<String> extractTerms(String question) {

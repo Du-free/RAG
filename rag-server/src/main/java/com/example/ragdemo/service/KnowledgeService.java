@@ -23,23 +23,19 @@ import java.nio.file.Paths;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.*;
 
 @Service
 @RequiredArgsConstructor
 public class KnowledgeService {
 
+    /**
+     * 智谱 Embedding 接口限制单次 input 数组最多 64 条；向量入库时必须分批提交。
+     */
+    private static final int EMBEDDING_BATCH_SIZE = 64;
     private static final String SUPPORTED_FILE_TYPES_LABEL = "PDF/TXT/MD/DOCX/XLSX/CSV/PPTX";
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
             "pdf",
@@ -52,7 +48,7 @@ public class KnowledgeService {
             "pptx"
     );
     private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|第[一二三四五六七八九十百千0-9]+[章节篇部分].*|[一二三四五六七八九十]+、.+|\\d+\\.\\d+(\\.\\d+)*[、.\\s].+)$");
-    private static final Pattern PARAGRAPH_SPLITTER = Pattern.compile("\\R{2,}");
+    private static final Pattern LIST_ITEM_PATTERN = Pattern.compile("^([\\-*>•·]\\s+|\\d+[.)、]\\s*|[一二三四五六七八九十]+[.)、]\\s*).+");
 
     private final JdbcTemplate jdbcTemplate;
     private final VectorStore vectorStore;
@@ -81,7 +77,7 @@ public class KnowledgeService {
 
         try {
             List<Document> chunks = splitDocument(documentId, file.getOriginalFilename(), savedPath);
-            vectorStore.add(chunks);
+            addVectorsInBatches(chunks);
             insertChunks(documentId, chunks);
             jdbcTemplate.update("""
                     UPDATE rag_document
@@ -223,6 +219,16 @@ public class KnowledgeService {
     }
 
     /**
+     * 分批写入向量库，避免 Embedding 服务一次接收超过 64 条文本导致 HTTP 400。
+     */
+    private void addVectorsInBatches(List<Document> chunks) {
+        for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
+            int end = Math.min(start + EMBEDDING_BATCH_SIZE, chunks.size());
+            vectorStore.add(chunks.subList(start, end));
+        }
+    }
+
+    /**
      * 结构化优先切块：优先保留标题和段落完整性；只有段落组过长时才使用滑窗切分。
      */
     private List<TextChunk> splitText(String text, int chunkSize, int chunkOverlap) {
@@ -250,7 +256,7 @@ public class KnowledgeService {
                 currentSection = block.sectionTitle();
             }
 
-            String blockStrategy = block.tableLike() ? "table" : "paragraph";
+            String blockStrategy = determineBlockStrategy(block);
             if (!buffer.isEmpty() && !Objects.equals(bufferStrategy, blockStrategy)) {
                 flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
                 bufferSection = "";
@@ -258,7 +264,11 @@ public class KnowledgeService {
 
             if (block.text().length() > safeChunkSize) {
                 flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
-                chunks.addAll(slidingWindow(block.text(), safeChunkSize, safeOverlap, currentSection, blockStrategy + "-sliding-window"));
+                if (block.tableLike()) {
+                    chunks.addAll(splitTableRows(block.text(), safeChunkSize, currentSection));
+                } else {
+                    chunks.addAll(slidingWindow(block.text(), safeChunkSize, safeOverlap, currentSection, blockStrategy + "-sliding-window"));
+                }
                 bufferSection = "";
                 continue;
             }
@@ -268,7 +278,6 @@ public class KnowledgeService {
                 flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
                 buffer.append(block.text());
                 bufferSection = currentSection;
-                bufferStrategy = blockStrategy;
             } else {
                 if (!buffer.isEmpty()) {
                     buffer.append("\n\n");
@@ -277,8 +286,8 @@ public class KnowledgeService {
                 if (!StringUtils.hasText(bufferSection)) {
                     bufferSection = currentSection;
                 }
-                bufferStrategy = blockStrategy;
             }
+            bufferStrategy = blockStrategy;
         }
         flushBuffer(chunks, buffer, bufferSection, bufferStrategy);
         return chunks;
@@ -300,10 +309,12 @@ public class KnowledgeService {
             String firstLine = paragraph.lines().findFirst().orElse("").trim();
             boolean heading = isHeading(firstLine);
             boolean tableLike = isTableLike(paragraph);
+            boolean codeLike = isCodeLike(paragraph);
+            boolean listLike = isListLike(paragraph);
             if (heading) {
                 currentSection = cleanHeading(firstLine);
             }
-            blocks.add(new ParagraphBlock(paragraph, currentSection, heading, tableLike));
+            blocks.add(new ParagraphBlock(paragraph, currentSection, heading, tableLike, codeLike, listLike));
         }
         return blocks;
     }
@@ -315,11 +326,41 @@ public class KnowledgeService {
     private List<String> splitSemanticParts(String text) {
         List<String> parts = new ArrayList<>();
         StringBuilder buffer = new StringBuilder();
+        boolean pendingTableBlank = false;
+        boolean inCodeFence = false;
         for (String line : text.split("\\n")) {
             String trimmed = line.trim();
-            if (!StringUtils.hasText(trimmed)) {
-                flushPart(parts, buffer);
+            if (trimmed.startsWith("```")) {
+                if (!buffer.isEmpty()) {
+                    buffer.append("\n");
+                }
+                buffer.append(line.stripTrailing());
+                inCodeFence = !inCodeFence;
+                pendingTableBlank = false;
                 continue;
+            }
+            if (inCodeFence) {
+                if (!buffer.isEmpty()) {
+                    buffer.append("\n");
+                }
+                buffer.append(line.stripTrailing());
+                continue;
+            }
+            if (!StringUtils.hasText(trimmed)) {
+                if (looksLikeOpenTable(buffer)) {
+                    pendingTableBlank = true;
+                } else {
+                    flushPart(parts, buffer);
+                }
+                continue;
+            }
+            if (pendingTableBlank) {
+                if (isPotentialTableLine(trimmed)) {
+                    buffer.append("\n\n");
+                } else {
+                    flushPart(parts, buffer);
+                }
+                pendingTableBlank = false;
             }
             if (isHeading(trimmed)) {
                 flushPart(parts, buffer);
@@ -353,6 +394,7 @@ public class KnowledgeService {
         String[] lines = paragraph.split("\\R");
         int tabbedLines = 0;
         int shortCellLines = 0;
+        int tableishLines = 0;
         for (String line : lines) {
             String trimmed = line.trim();
             if (!StringUtils.hasText(trimmed)) {
@@ -361,11 +403,70 @@ public class KnowledgeService {
             if (line.indexOf('\t') >= 0) {
                 tabbedLines++;
             }
+            if (isPotentialTableLine(trimmed)) {
+                tableishLines++;
+            }
             if (trimmed.length() <= 24 && !isHeading(trimmed)) {
                 shortCellLines++;
             }
         }
-        return tabbedLines >= 1 || lines.length >= 3 && shortCellLines >= 2;
+        return tabbedLines >= 1 || tableishLines >= 3 || lines.length >= 3 && shortCellLines >= 2;
+    }
+
+    private boolean isPotentialTableLine(String line) {
+        return line.indexOf('\t') >= 0
+                || line.contains("|")
+                || line.length() <= 36 && !isHeading(line) && !LIST_ITEM_PATTERN.matcher(line).matches()
+                && "。！？；.!?;".indexOf(line.charAt(line.length() - 1)) < 0;
+    }
+
+    private boolean looksLikeOpenTable(StringBuilder buffer) {
+        String value = buffer.toString().trim();
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        String[] lines = value.split("\\R");
+        int from = Math.max(0, lines.length - 4);
+        int tableishLines = 0;
+        for (int i = from; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (StringUtils.hasText(line) && isPotentialTableLine(line)) {
+                tableishLines++;
+            }
+        }
+        return tableishLines >= 2;
+    }
+
+    private boolean isCodeLike(String paragraph) {
+        String trimmed = paragraph.trim();
+        return trimmed.startsWith("```")
+                || trimmed.contains(" class ")
+                || trimmed.contains(" public ")
+                || trimmed.contains(" private ")
+                || trimmed.contains(" return ")
+                || trimmed.lines().filter(line -> line.startsWith("    ") || line.startsWith("\t")).count() >= 2;
+    }
+
+    private boolean isListLike(String paragraph) {
+        long listLines = paragraph.lines()
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .filter(line -> LIST_ITEM_PATTERN.matcher(line).matches())
+                .count();
+        return listLines >= 2;
+    }
+
+    private String determineBlockStrategy(ParagraphBlock block) {
+        if (block.codeLike()) {
+            return "code";
+        }
+        if (block.tableLike()) {
+            return "table";
+        }
+        if (block.listLike()) {
+            return "list";
+        }
+        return "paragraph";
     }
 
     private void flushBuffer(List<TextChunk> chunks, StringBuilder buffer, String sectionTitle, String strategy) {
@@ -397,12 +498,46 @@ public class KnowledgeService {
         return chunks;
     }
 
+    /**
+     * 表格块过长时按行组拆分，尽量避免把同一行或相邻单元格从中间切开。
+     */
+    private List<TextChunk> splitTableRows(String text, int chunkSize, String sectionTitle) {
+        List<TextChunk> chunks = new ArrayList<>();
+        String[] rowGroups = text.split("\\n\\s*\\n");
+        StringBuilder buffer = new StringBuilder();
+        for (String rowGroup : rowGroups) {
+            String row = rowGroup.trim();
+            if (!StringUtils.hasText(row)) {
+                continue;
+            }
+            String candidate = buffer.isEmpty() ? row : buffer + "\n\n" + row;
+            if (!buffer.isEmpty() && candidate.length() > chunkSize) {
+                flushBuffer(chunks, buffer, sectionTitle, "table-row-group");
+            }
+            if (row.length() > chunkSize) {
+                chunks.addAll(slidingWindow(row, chunkSize, 0, sectionTitle, "table-sliding-window"));
+            } else {
+                if (!buffer.isEmpty()) {
+                    buffer.append("\n\n");
+                }
+                buffer.append(row);
+            }
+        }
+        flushBuffer(chunks, buffer, sectionTitle, "table-row-group");
+        return chunks;
+    }
+
     private int findNaturalBoundary(String text, int start, int preferredEnd) {
         if (preferredEnd >= text.length()) {
             return text.length();
         }
 
         int minEnd = Math.min(start + 200, preferredEnd);
+        for (int i = preferredEnd; i > minEnd; i--) {
+            if (i >= 2 && text.charAt(i - 1) == '\n' && text.charAt(i - 2) == '\n') {
+                return i;
+            }
+        }
         for (int i = preferredEnd; i > minEnd; i--) {
             char value = text.charAt(i - 1);
             if ("。！？；.!?;\n ".indexOf(value) >= 0) {
@@ -416,9 +551,15 @@ public class KnowledgeService {
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
             jdbcTemplate.update("""
-                    INSERT INTO rag_document_chunk(document_id, vector_id, chunk_index, content)
-                    VALUES (?, ?, ?, ?)
-                    """, documentId, chunk.getId(), i, chunk.getText());
+                            INSERT INTO rag_document_chunk(document_id, vector_id, chunk_index, content, section_title, split_strategy)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                    documentId,
+                    chunk.getId(),
+                    i,
+                    chunk.getText(),
+                    Objects.toString(chunk.getMetadata().get("section_title"), ""),
+                    Objects.toString(chunk.getMetadata().get("split_strategy"), "paragraph"));
         }
     }
 
@@ -446,7 +587,8 @@ public class KnowledgeService {
         return Objects.requireNonNullElse(extension, "").toLowerCase(Locale.ROOT);
     }
 
-    private record ParagraphBlock(String text, String sectionTitle, boolean heading, boolean tableLike) {
+    private record ParagraphBlock(String text, String sectionTitle, boolean heading, boolean tableLike,
+                                  boolean codeLike, boolean listLike) {
     }
 
     private record TextChunk(String text, String sectionTitle, String strategy) {
