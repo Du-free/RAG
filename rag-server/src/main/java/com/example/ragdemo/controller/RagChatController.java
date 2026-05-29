@@ -30,7 +30,7 @@ public class RagChatController {
     }
 
     @GetMapping("/api/history/sessions")
-    public List<String> listSessions() {
+    public List<ChatSessionResponse> listSessions() {
         return ragChatService.listSessions();
     }
 

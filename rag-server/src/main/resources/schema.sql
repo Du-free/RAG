@@ -1,3 +1,16 @@
+CREATE TABLE IF NOT EXISTS rag_user (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  username VARCHAR(64) NOT NULL COMMENT '登录用户名',
+  password_hash VARCHAR(128) NOT NULL COMMENT 'BCrypt密码哈希',
+  role VARCHAR(32) NOT NULL COMMENT '角色 ADMIN/USER',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_rag_user_username (username),
+  KEY idx_rag_user_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG用户表';
+
 CREATE TABLE IF NOT EXISTS rag_document (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   filename VARCHAR(255) NOT NULL COMMENT '原始文件名',
@@ -30,15 +43,28 @@ CREATE TABLE IF NOT EXISTS rag_document_chunk (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG文档分块表';
 
 CREATE TABLE IF NOT EXISTS rag_chat_message (
+  user_id BIGINT NULL COMMENT '用户ID',
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   chat_id VARCHAR(64) NOT NULL COMMENT '会话ID',
   role VARCHAR(32) NOT NULL COMMENT '消息角色 user/assistant',
   content MEDIUMTEXT NOT NULL COMMENT '消息内容',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
+  KEY idx_rag_chat_user_id (user_id),
   KEY idx_rag_chat_id (chat_id),
   KEY idx_rag_chat_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG聊天消息表';
+
+CREATE TABLE IF NOT EXISTS rag_chat_session (
+  user_id BIGINT NULL COMMENT '用户ID',
+  chat_id VARCHAR(64) NOT NULL COMMENT '会话ID',
+  title VARCHAR(64) NOT NULL COMMENT '会话标题',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (chat_id),
+  KEY idx_rag_session_user_id (user_id),
+  KEY idx_rag_session_update_time (update_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG聊天会话表';
 
 CREATE TABLE IF NOT EXISTS rag_answer_source (
   id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',

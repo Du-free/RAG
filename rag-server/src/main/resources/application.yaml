@@ -33,10 +33,11 @@ spring:
           model: embedding-3
     vectorstore:
       qdrant:
-        host: 47.116.133.220
-        port: 6334
+        # Qdrant 连接信息从 .env 读取，便于本地开发和服务器部署使用不同地址。
+        host: ${QDRANT_HOST:47.116.133.220}
+        port: ${QDRANT_PORT:6334}
         api-key: ${QDRANT_API_KEY:}
-        collection-name: rag_demo
+        collection-name: ${QDRANT_COLLECTION_NAME:rag_demo}
 
         initialize-schema: true
 

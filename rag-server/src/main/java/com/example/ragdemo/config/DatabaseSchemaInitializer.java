@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,6 +15,7 @@ import javax.sql.DataSource;
 
 @Slf4j
 @Component
+@Order(10)
 @RequiredArgsConstructor
 public class DatabaseSchemaInitializer implements ApplicationRunner {
 
@@ -55,6 +57,26 @@ public class DatabaseSchemaInitializer implements ApplicationRunner {
                     ADD COLUMN split_strategy VARCHAR(64) NULL COMMENT '分块策略，如 paragraph/table/code'
                     AFTER section_title
                     """);
+        }
+        if (!columnExists("rag_chat_session", "user_id")) {
+            jdbcTemplate.execute("""
+                    ALTER TABLE rag_chat_session
+                    ADD COLUMN user_id BIGINT NULL COMMENT '用户ID'
+                    AFTER chat_id
+                    """);
+        }
+        if (!indexExists("rag_chat_session", "idx_rag_session_user_id")) {
+            jdbcTemplate.execute("CREATE INDEX idx_rag_session_user_id ON rag_chat_session(user_id)");
+        }
+        if (!columnExists("rag_chat_message", "user_id")) {
+            jdbcTemplate.execute("""
+                    ALTER TABLE rag_chat_message
+                    ADD COLUMN user_id BIGINT NULL COMMENT '用户ID'
+                    AFTER id
+                    """);
+        }
+        if (!indexExists("rag_chat_message", "idx_rag_chat_user_id")) {
+            jdbcTemplate.execute("CREATE INDEX idx_rag_chat_user_id ON rag_chat_message(user_id)");
         }
         if (!indexExists("rag_document_chunk", "ft_rag_chunk_content")) {
             try {

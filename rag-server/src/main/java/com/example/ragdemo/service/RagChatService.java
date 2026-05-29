@@ -1,6 +1,8 @@
 package com.example.ragdemo.service;
 
 import com.example.ragdemo.dto.*;
+import com.example.ragdemo.security.AuthenticatedUser;
+import com.example.ragdemo.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -23,6 +25,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 
 @Slf4j
@@ -30,7 +33,10 @@ import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 @RequiredArgsConstructor
 public class RagChatService {
 
+    private static final int MAX_SESSION_TITLE_LENGTH = 18;
     private static final Pattern TOKEN_SPLITTER = Pattern.compile("[\\s,，。！？?；;：:、]+");
+    private static final Pattern SESSION_TITLE_PREFIX = Pattern.compile("^(请问|请帮我|帮我|请解释|解释一下|介绍一下|说明一下)");
+    private static final Pattern SESSION_TITLE_SUFFIX = Pattern.compile("[吗呢呀啊？?。！!]+$");
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
@@ -44,18 +50,27 @@ public class RagChatService {
             rs.getString("content"),
             rs.getObject("create_time", LocalDateTime.class)
     );
+    private final RowMapper<ChatSessionResponse> sessionRowMapper = (rs, rowNum) -> new ChatSessionResponse(
+            rs.getString("chat_id"),
+            buildSessionTitle(rs.getString("raw_title")),
+            rs.getObject("create_time", LocalDateTime.class),
+            rs.getObject("update_time", LocalDateTime.class)
+    );
 
     /**
      * 执行 RAG 问答：检索候选片段、可选 LLM 重排序、生成答案，并保存聊天记录。
      */
     public RagChatResponse ask(RagChatRequest request) {
+        AuthenticatedUser user = CurrentUser.require();
         String question = requireText(request.question(), "问题不能为空");
         String chatId = StringUtils.hasText(request.chatId()) ? request.chatId().trim() : UUID.randomUUID().toString();
 
-        insertMessage(chatId, "user", question);
+        createSessionIfAbsent(user.id(), chatId, question);
+        insertMessage(user.id(), chatId, "user", question);
         RagRunResult result = runRag(question);
-        Long assistantMessageId = insertMessage(chatId, "assistant", result.answer());
+        Long assistantMessageId = insertMessage(user.id(), chatId, "assistant", result.answer());
         saveSources(assistantMessageId, result.selectedSources());
+        touchSession(user.id(), chatId);
         return new RagChatResponse(chatId, result.answer(), result.selectedSources());
     }
 
@@ -80,38 +95,120 @@ public class RagChatService {
     /**
      * 查询历史会话，按最后一条消息时间倒序返回。
      */
-    public List<String> listSessions() {
-        return jdbcTemplate.queryForList("""
-                SELECT chat_id
-                FROM rag_chat_message
-                GROUP BY chat_id
-                ORDER BY MAX(create_time) DESC
-                """, String.class);
+    public List<ChatSessionResponse> listSessions() {
+        Long userId = CurrentUser.require().id();
+        return jdbcTemplate.query("""
+                SELECT grouped.chat_id,
+                       COALESCE(s.title, grouped.first_user_question, '新会话') AS raw_title,
+                       COALESCE(s.create_time, grouped.create_time) AS create_time,
+                       COALESCE(s.update_time, grouped.update_time) AS update_time
+                FROM (
+                    SELECT m.chat_id,
+                           MIN(m.create_time) AS create_time,
+                           MAX(m.create_time) AS update_time,
+                           (
+                               SELECT um.content
+                               FROM rag_chat_message um
+                               WHERE um.user_id = m.user_id AND um.chat_id = m.chat_id AND um.role = 'user'
+                               ORDER BY um.id ASC
+                               LIMIT 1
+                           ) AS first_user_question
+                    FROM rag_chat_message m
+                    WHERE m.user_id = ?
+                    GROUP BY m.chat_id, m.user_id
+                ) grouped
+                LEFT JOIN rag_chat_session s ON s.user_id = ? AND s.chat_id = grouped.chat_id
+                ORDER BY COALESCE(s.update_time, grouped.update_time) DESC
+                """, sessionRowMapper, userId, userId);
     }
 
     /**
      * 查询指定会话下的全部消息。
      */
     public List<ChatMessageResponse> listMessages(String chatId) {
+        Long userId = CurrentUser.require().id();
+        String requiredChatId = requireText(chatId, "会话ID不能为空");
+        ensureSessionOwned(userId, requiredChatId);
         return jdbcTemplate.query("""
                 SELECT id, chat_id, role, content, create_time
                 FROM rag_chat_message
-                WHERE chat_id = ?
+                WHERE user_id = ? AND chat_id = ?
                 ORDER BY id ASC
-                """, messageRowMapper, requireText(chatId, "会话ID不能为空"));
+                """, messageRowMapper, userId, requiredChatId);
     }
 
     /**
      * 删除会话历史，仅删除数据库消息记录，不涉及文件或文件夹。
      */
     public void deleteSession(String chatId) {
+        Long userId = CurrentUser.require().id();
         String requiredChatId = requireText(chatId, "会话ID不能为空");
+        ensureSessionOwned(userId, requiredChatId);
         jdbcTemplate.update("""
                 DELETE s FROM rag_answer_source s
                 JOIN rag_chat_message m ON s.message_id = m.id
-                WHERE m.chat_id = ?
-                """, requiredChatId);
-        jdbcTemplate.update("DELETE FROM rag_chat_message WHERE chat_id = ?", requiredChatId);
+                WHERE m.user_id = ? AND m.chat_id = ?
+                """, userId, requiredChatId);
+        jdbcTemplate.update("DELETE FROM rag_chat_message WHERE user_id = ? AND chat_id = ?", userId, requiredChatId);
+        jdbcTemplate.update("DELETE FROM rag_chat_session WHERE user_id = ? AND chat_id = ?", userId, requiredChatId);
+    }
+
+    /**
+     * 首次问答时创建会话标题；若会话已存在，INSERT IGNORE 不会覆盖原标题。
+     */
+    private void createSessionIfAbsent(Long userId, String chatId, String question) {
+        Integer otherOwnerCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM rag_chat_session
+                WHERE chat_id = ? AND user_id <> ?
+                """, Integer.class, chatId, userId);
+        if (otherOwnerCount != null && otherOwnerCount > 0) {
+            throw new ResponseStatusException(FORBIDDEN, "无权限访问该会话");
+        }
+        String titleSource = findFirstUserQuestion(userId, chatId).orElse(question);
+        jdbcTemplate.update("""
+                INSERT IGNORE INTO rag_chat_session(chat_id, user_id, title)
+                VALUES (?, ?, ?)
+                """, chatId, userId, buildSessionTitle(titleSource));
+    }
+
+    private Optional<String> findFirstUserQuestion(Long userId, String chatId) {
+        List<String> questions = jdbcTemplate.queryForList("""
+                SELECT content
+                FROM rag_chat_message
+                WHERE user_id = ? AND chat_id = ? AND role = 'user'
+                ORDER BY id ASC
+                LIMIT 1
+                """, String.class, userId, chatId);
+        return questions.stream().filter(StringUtils::hasText).findFirst();
+    }
+
+    private void touchSession(Long userId, String chatId) {
+        jdbcTemplate.update("UPDATE rag_chat_session SET update_time = CURRENT_TIMESTAMP WHERE user_id = ? AND chat_id = ?", userId, chatId);
+    }
+
+    /**
+     * 用首条用户问题生成短标题：去掉换行、多余空白和礼貌问句前缀，再做长度截断。
+     */
+    private String buildSessionTitle(String question) {
+        if (!StringUtils.hasText(question)) {
+            return "新会话";
+        }
+        String title = question.replaceAll("\\s+", " ").trim();
+        title = SESSION_TITLE_PREFIX.matcher(title).replaceFirst("").trim();
+        title = SESSION_TITLE_SUFFIX.matcher(title).replaceAll("").trim();
+        if (!StringUtils.hasText(title)) {
+            return "新会话";
+        }
+        return abbreviateByCodePoint(title, MAX_SESSION_TITLE_LENGTH);
+    }
+
+    private String abbreviateByCodePoint(String value, int maxLength) {
+        if (value.codePointCount(0, value.length()) <= maxLength) {
+            return value;
+        }
+        int endIndex = value.offsetByCodePoints(0, maxLength);
+        return value.substring(0, endIndex) + "...";
     }
 
     private RagRunResult runRag(String question) {
@@ -401,16 +498,17 @@ public class RagChatService {
         }
     }
 
-    private Long insertMessage(String chatId, String role, String content) {
+    private Long insertMessage(Long userId, String chatId, String role, String content) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement("""
-                    INSERT INTO rag_chat_message(chat_id, role, content)
-                    VALUES (?, ?, ?)
+                    INSERT INTO rag_chat_message(user_id, chat_id, role, content)
+                    VALUES (?, ?, ?, ?)
                     """, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1, chatId);
-            ps.setString(2, role);
-            ps.setString(3, content);
+            ps.setLong(1, userId);
+            ps.setString(2, chatId);
+            ps.setString(3, role);
+            ps.setString(4, content);
             return ps;
         }, keyHolder);
 
@@ -419,6 +517,17 @@ public class RagChatService {
             throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "保存聊天记录失败");
         }
         return key.longValue();
+    }
+
+    private void ensureSessionOwned(Long userId, String chatId) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM rag_chat_session
+                WHERE user_id = ? AND chat_id = ?
+                """, Integer.class, userId, chatId);
+        if (count == null || count == 0) {
+            throw new ResponseStatusException(FORBIDDEN, "无权限访问该会话");
+        }
     }
 
     private String requireText(String value, String message) {
@@ -453,3 +562,4 @@ public class RagChatService {
     ) {
     }
 }
+

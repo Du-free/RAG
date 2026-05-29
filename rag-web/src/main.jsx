@@ -9,6 +9,7 @@ import {
   FlaskConical,
   Gauge,
   Loader2,
+  LogOut,
   MessageSquare,
   Moon,
   Plus,
@@ -29,6 +30,19 @@ const API_BASE = '';
 
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeSession(session) {
+  if (typeof session === 'string') {
+    return {
+      chatId: session,
+      title: session.slice(-8).toUpperCase(),
+    };
+  }
+  return {
+    ...session,
+    title: session?.title || session?.chatId?.slice(-8).toUpperCase() || '新会话',
+  };
 }
 
 function formatTime(value) {
@@ -74,8 +88,11 @@ function normalizeSettings(settings) {
   };
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
   const text = await response.text();
 
   if (!response.ok) {
@@ -86,7 +103,9 @@ async function fetchJson(url, options) {
     } catch {
       message = text || message;
     }
-    throw new Error(message);
+    const error = new Error(response.status === 403 ? '无权限访问' : message);
+    error.status = response.status;
+    throw error;
   }
 
   if (response.status === 204) return null;
@@ -96,6 +115,10 @@ async function fetchJson(url, options) {
 function App() {
   const [activeView, setActiveView] = React.useState('chat');
   const [theme, setTheme] = React.useState('dark');
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [authUser, setAuthUser] = React.useState(null);
+  const [loginForm, setLoginForm] = React.useState({ username: '', password: '' });
+  const [loggingIn, setLoggingIn] = React.useState(false);
   const [documents, setDocuments] = React.useState([]);
   const [sessions, setSessions] = React.useState([]);
   const [settings, setSettings] = React.useState(null);
@@ -114,6 +137,7 @@ function App() {
   const [debugging, setDebugging] = React.useState(false);
   const [evaluating, setEvaluating] = React.useState(false);
   const [error, setError] = React.useState('');
+  const isAdmin = authUser?.role === 'ADMIN';
 
   const loadDocuments = React.useCallback(async () => {
     const data = await fetchJson(`${API_BASE}/api/knowledge/documents`);
@@ -122,7 +146,7 @@ function App() {
 
   const loadSessions = React.useCallback(async () => {
     const data = await fetchJson(`${API_BASE}/api/history/sessions`);
-    setSessions(data || []);
+    setSessions((data || []).map(normalizeSession));
   }, []);
 
   const loadSettings = React.useCallback(async () => {
@@ -145,9 +169,74 @@ function App() {
     setMessages((data || []).map((item) => ({ ...item, sources: [] })));
   }, []);
 
+  const handleApiError = React.useCallback((err) => {
+    if (err.status === 401) {
+      setAuthUser(null);
+      setMessages([]);
+      setSessions([]);
+      setError('登录已过期，请重新登录');
+      return;
+    }
+    setError(err.status === 403 ? '无权限访问' : err.message);
+  }, []);
+
   React.useEffect(() => {
-    Promise.all([loadDocuments(), loadSessions(), loadSettings(), loadEvaluation()]).catch((err) => setError(err.message));
-  }, [loadDocuments, loadSessions, loadSettings, loadEvaluation]);
+    fetchJson(`${API_BASE}/api/auth/me`)
+      .then((user) => setAuthUser(user))
+      .catch((err) => {
+        if (err.status !== 401) {
+          handleApiError(err);
+        }
+      })
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  React.useEffect(() => {
+    if (!authChecked || !authUser) return;
+    if (authUser.role !== 'ADMIN' && activeView !== 'chat') {
+      setActiveView('chat');
+    }
+    const adminLoads = authUser.role === 'ADMIN'
+      ? [loadDocuments(), loadSettings(), loadEvaluation()]
+      : [Promise.resolve(setDocuments([])), Promise.resolve(setSettings(null)), Promise.resolve(setSettingsDraft(null)), Promise.resolve(setEvaluationCases([])), Promise.resolve(setEvaluationRuns([]))];
+    Promise.all([loadSessions(), ...adminLoads]).catch(handleApiError);
+  }, [authChecked, authUser, activeView, loadDocuments, loadSessions, loadSettings, loadEvaluation, handleApiError]);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    if (!loginForm.username.trim() || !loginForm.password || loggingIn) return;
+
+    setLoggingIn(true);
+    setError('');
+    try {
+      const user = await fetchJson(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      setAuthUser(user);
+      setLoginForm({ username: '', password: '' });
+      setActiveView('chat');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function handleLogout() {
+    setError('');
+    try {
+      await fetchJson(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+    } catch {
+      // 即使服务端清理失败，也清掉本地登录态，避免用户继续误操作。
+    }
+    setAuthUser(null);
+    setSessions([]);
+    setMessages([]);
+    setDocuments([]);
+    setActiveChatId(createId());
+  }
 
   async function handleUpload(event) {
     const files = Array.from(event.target.files || []);
@@ -166,7 +255,7 @@ function App() {
       }
       await loadDocuments();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setUploading(false);
       event.target.value = '';
@@ -182,7 +271,7 @@ function App() {
       await fetchJson(`${API_BASE}/api/knowledge/documents/${id}`, { method: 'DELETE' });
       await loadDocuments();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     }
   }
 
@@ -236,7 +325,7 @@ function App() {
             : message
         )
       );
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setAsking(false);
     }
@@ -249,7 +338,7 @@ function App() {
     try {
       await loadMessages(chatId);
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     }
   }
 
@@ -266,7 +355,7 @@ function App() {
       }
       await loadSessions();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     }
   }
 
@@ -291,7 +380,7 @@ function App() {
       setSettings(data);
       setSettingsDraft(data);
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setSavingSettings(false);
     }
@@ -311,7 +400,7 @@ function App() {
       });
       setDebugResult(data);
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setDebugging(false);
     }
@@ -329,7 +418,7 @@ function App() {
       setNewCase({ question: '', expectedDocument: '', referenceAnswer: '', expectedKeywords: '' });
       await loadEvaluation();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     }
   }
 
@@ -342,7 +431,7 @@ function App() {
       await fetchJson(`${API_BASE}/api/evaluation/cases/${id}`, { method: 'DELETE' });
       await loadEvaluation();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     }
   }
 
@@ -353,7 +442,7 @@ function App() {
       await fetchJson(`${API_BASE}/api/evaluation/runs`, { method: 'POST' });
       await loadEvaluation();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setEvaluating(false);
     }
@@ -371,6 +460,31 @@ function App() {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
   }
 
+  if (!authChecked) {
+    return (
+      <div className="app-shell auth-shell" data-theme={theme}>
+        <div className="login-card">
+          <Loader2 className="spin" size={28} />
+          <span>正在检查登录状态...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <LoginPage
+        theme={theme}
+        loginForm={loginForm}
+        setLoginForm={setLoginForm}
+        loggingIn={loggingIn}
+        error={error}
+        onLogin={handleLogin}
+        onToggleTheme={toggleTheme}
+      />
+    );
+  }
+
   return (
     <div className="app-shell" data-theme={theme}>
       <aside className="sidebar">
@@ -382,27 +496,29 @@ function App() {
           </div>
         </div>
 
-        <section className="side-section">
-          <div className="section-title">
-            <FileText size={16} />
-            <span>知识库</span>
-          </div>
-          <label className="upload-button">
-            {uploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />}
-            <span>{uploading ? '导入中' : '上传文档'}</span>
-            <input
-              type="file"
-              accept=".pdf,.txt,.md,.markdown,.docx,.xlsx,.csv,.pptx"
-              multiple
-              onChange={handleUpload}
-              disabled={uploading}
-            />
-          </label>
-          <button className="ghost-button" onClick={loadDocuments}>
-            <RefreshCcw size={16} />
-            <span>刷新列表</span>
-          </button>
-        </section>
+        {isAdmin && (
+          <section className="side-section">
+            <div className="section-title">
+              <FileText size={16} />
+              <span>知识库</span>
+            </div>
+            <label className="upload-button">
+              {uploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />}
+              <span>{uploading ? '导入中' : '上传文档'}</span>
+              <input
+                type="file"
+                accept=".pdf,.txt,.md,.markdown,.docx,.xlsx,.csv,.pptx"
+                multiple
+                onChange={handleUpload}
+                disabled={uploading}
+              />
+            </label>
+            <button className="ghost-button" onClick={loadDocuments}>
+              <RefreshCcw size={16} />
+              <span>刷新列表</span>
+            </button>
+          </section>
+        )}
 
         <section className="side-section">
           <div className="section-title">
@@ -413,14 +529,18 @@ function App() {
             <MessageSquare size={16} />
             <span>问答</span>
           </button>
-          <button className={`ghost-button ${activeView === 'debug' ? 'active' : ''}`} onClick={() => setActiveView('debug')}>
-            <SlidersHorizontal size={16} />
-            <span>检索调试</span>
-          </button>
-          <button className={`ghost-button ${activeView === 'evaluation' ? 'active' : ''}`} onClick={() => setActiveView('evaluation')}>
-            <FlaskConical size={16} />
-            <span>评测体系</span>
-          </button>
+          {isAdmin && (
+            <>
+              <button className={`ghost-button ${activeView === 'debug' ? 'active' : ''}`} onClick={() => setActiveView('debug')}>
+                <SlidersHorizontal size={16} />
+                <span>检索调试</span>
+              </button>
+              <button className={`ghost-button ${activeView === 'evaluation' ? 'active' : ''}`} onClick={() => setActiveView('evaluation')}>
+                <FlaskConical size={16} />
+                <span>评测体系</span>
+              </button>
+            </>
+          )}
         </section>
 
         <section className="side-section session-section">
@@ -435,17 +555,18 @@ function App() {
           <div className="session-list">
             {sessions.map((session) => (
               <button
-                key={session}
-                className={`session-item ${session === activeChatId ? 'active' : ''}`}
-                onClick={() => handleSelectSession(session)}
+                key={session.chatId}
+                className={`session-item ${session.chatId === activeChatId ? 'active' : ''}`}
+                onClick={() => handleSelectSession(session.chatId)}
+                title={session.title}
               >
                 <MessageSquare size={15} />
-                <span>{session.slice(-8).toUpperCase()}</span>
+                <span>{session.title}</span>
                 <Trash2
                   size={14}
                   onClick={(event) => {
                     event.stopPropagation();
-                    handleDeleteSession(session);
+                    handleDeleteSession(session.chatId);
                   }}
                 />
               </button>
@@ -463,9 +584,11 @@ function App() {
       <main className="workspace">
         <Header
           activeView={activeView}
-          readyCount={documents.filter((doc) => doc.status === 'READY').length}
+          readyCount={isAdmin ? documents.filter((doc) => doc.status === 'READY').length : null}
           theme={theme}
+          user={authUser}
           onToggleTheme={toggleTheme}
+          onLogout={handleLogout}
         />
 
         {error && <div className="error-banner">{error}</div>}
@@ -474,6 +597,7 @@ function App() {
           {activeView === 'chat' && (
             <ChatWorkspace
               documents={documents}
+              isAdmin={isAdmin}
               messages={messages}
               question={question}
               asking={asking}
@@ -483,7 +607,7 @@ function App() {
             />
           )}
 
-          {activeView === 'debug' && (
+          {isAdmin && activeView === 'debug' && (
             <DebugWorkspace
               settings={settings}
               settingsDraft={settingsDraft}
@@ -498,7 +622,7 @@ function App() {
             />
           )}
 
-          {activeView === 'evaluation' && (
+          {isAdmin && activeView === 'evaluation' && (
             <EvaluationWorkspace
               cases={evaluationCases}
               runs={evaluationRuns}
@@ -516,7 +640,56 @@ function App() {
   );
 }
 
-function Header({ activeView, readyCount, theme, onToggleTheme }) {
+function LoginPage({ theme, loginForm, setLoginForm, loggingIn, error, onLogin, onToggleTheme }) {
+  return (
+    <div className="app-shell auth-shell" data-theme={theme}>
+      <section className="login-card">
+        <div className="brand-row login-brand">
+          <Database size={28} />
+          <div>
+            <h1>RAG</h1>
+            <span>本地知识库问答</span>
+          </div>
+        </div>
+        <form className="login-form" onSubmit={onLogin}>
+          <div>
+            <h2>登录</h2>
+            <p>请输入账号密码访问 RAG Demo。</p>
+          </div>
+          {error && <div className="error-banner">{error}</div>}
+          <label>
+            <span>用户名</span>
+            <input
+              value={loginForm.username}
+              onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
+              autoComplete="username"
+              autoFocus
+            />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              type="password"
+              value={loginForm.password}
+              onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+              autoComplete="current-password"
+            />
+          </label>
+          <button className="primary-button login-submit" type="submit" disabled={loggingIn || !loginForm.username.trim() || !loginForm.password}>
+            {loggingIn ? <Loader2 className="spin" size={18} /> : <User size={18} />}
+            <span>{loggingIn ? '登录中' : '进入系统'}</span>
+          </button>
+        </form>
+        <button className="theme-toggle login-theme" onClick={onToggleTheme} type="button" title="Toggle theme">
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          <span>{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function Header({ activeView, readyCount, theme, user, onToggleTheme, onLogout }) {
   const copy = {
     chat: ['知识库检索增强问答', '上传资料后提问，回答会附带命中的来源片段。'],
     debug: ['检索调试与参数配置', '调整切块、召回和重排序参数，观察候选片段与最终答案。'],
@@ -530,23 +703,34 @@ function Header({ activeView, readyCount, theme, onToggleTheme }) {
         <p>{copy[1]}</p>
       </div>
       <div className="topbar-actions">
-        <div className="status-pill">
-        <Search size={16} />
-        <span>{readyCount} 个可检索文档</span>
+        {readyCount !== null && (
+          <div className="status-pill">
+            <Search size={16} />
+            <span>{readyCount} 个可检索文档</span>
+          </div>
+        )}
+        <div className="user-pill">
+          <User size={16} />
+          <span>{user.username}</span>
+          <strong>{user.role}</strong>
         </div>
         <button className="theme-toggle" onClick={onToggleTheme} type="button" title="Toggle theme">
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           <span>{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
+        </button>
+        <button className="theme-toggle" onClick={onLogout} type="button" title="退出登录">
+          <LogOut size={16} />
+          <span>退出</span>
         </button>
       </div>
     </header>
   );
 }
 
-function ChatWorkspace({ documents, messages, question, asking, setQuestion, handleAsk, handleDeleteDocument }) {
+function ChatWorkspace({ documents, isAdmin, messages, question, asking, setQuestion, handleAsk, handleDeleteDocument }) {
   return (
-    <div className="content-grid">
-      <section className="document-panel">
+    <div className={isAdmin ? 'content-grid' : 'content-grid chat-only-grid'}>
+      {isAdmin && <section className="document-panel">
         <div className="panel-head">
           <h3>文档列表</h3>
           <span>{documents.length} 个文件</span>
@@ -570,7 +754,7 @@ function ChatWorkspace({ documents, messages, question, asking, setQuestion, han
             </article>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="chat-panel">
         <div className="message-list">
@@ -833,3 +1017,4 @@ function TargetIcon() {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+

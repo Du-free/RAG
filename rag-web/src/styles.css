@@ -121,6 +121,7 @@ button {
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace {
@@ -2809,4 +2810,133 @@ body {
   .debug-page .settings-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Final auth overrides need to stay after the base shell rules. */
+.auth-shell {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.chat-only-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* Auth and role-aware layout overrides. */
+.auth-shell {
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+  background:
+    linear-gradient(rgba(190, 255, 18, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(190, 255, 18, 0.08) 1px, transparent 1px),
+    #050805;
+  background-size: 28px 28px;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  border: 1px solid rgba(190, 255, 18, 0.42);
+  background: rgba(0, 0, 0, 0.88);
+  color: #f8fafc;
+  box-shadow: 8px 8px 0 #5b5cf6;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.login-brand svg,
+.login-brand h1 {
+  color: #baff12;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form h2,
+.login-form p {
+  margin: 0;
+}
+
+.login-form p {
+  margin-top: 6px;
+  color: #a9b4c6;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.login-form input {
+  height: 44px;
+  border: 1px solid #334155;
+  background: #020403;
+  color: #f8fafc;
+  padding: 0 12px;
+  outline: none;
+}
+
+.login-form input:focus {
+  border-color: #baff12;
+  box-shadow: 0 0 0 2px rgba(186, 255, 18, 0.18);
+}
+
+.login-submit {
+  width: 100%;
+  justify-content: center;
+}
+
+.login-theme {
+  align-self: flex-end;
+}
+
+.user-pill {
+  min-height: 36px;
+  border: 1px solid rgba(203, 213, 225, 0.25);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  white-space: nowrap;
+}
+
+.user-pill strong {
+  color: #baff12;
+  font-size: 12px;
+}
+
+.chat-only-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell[data-theme="light"].auth-shell {
+  background:
+    linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    #f4f7fb;
+}
+
+.app-shell[data-theme="light"] .login-card {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #0f172a;
+}
+
+.app-shell[data-theme="light"] .login-form input {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.app-shell[data-theme="light"] .user-pill strong {
+  color: #365314;
 }
