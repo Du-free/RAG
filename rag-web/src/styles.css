@@ -2826,6 +2826,7 @@ body {
   grid-template-columns: 1fr;
   min-height: 100vh;
   place-items: center;
+  position: relative;
   padding: 32px;
   background:
     linear-gradient(rgba(190, 255, 18, 0.08) 1px, transparent 1px),
@@ -2889,12 +2890,17 @@ body {
 }
 
 .login-submit {
-  width: 100%;
+  width: calc(100% - 4px);
+  margin: 0 4px 4px 0;
   justify-content: center;
+  box-shadow: 4px 4px 0 0 var(--neo-purple);
 }
 
 .login-theme {
-  align-self: flex-end;
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  z-index: 10;
 }
 
 .user-pill {
@@ -2929,6 +2935,11 @@ body {
   background: #ffffff;
   color: #0f172a;
   border-color: #0f172a;
+}
+
+.app-shell[data-theme="light"] .login-brand h1,
+.app-shell[data-theme="light"] .login-brand svg {
+  color: #312e81;
 }
 
 .app-shell[data-theme="light"] .login-form input {

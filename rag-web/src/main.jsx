@@ -643,6 +643,10 @@ function App() {
 function LoginPage({ theme, loginForm, setLoginForm, loggingIn, error, onLogin, onToggleTheme }) {
   return (
     <div className="app-shell auth-shell" data-theme={theme}>
+      <button className="theme-toggle login-theme" onClick={onToggleTheme} type="button" title="Toggle theme">
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        <span>{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
+      </button>
       <section className="login-card">
         <div className="brand-row login-brand">
           <Database size={28} />
@@ -680,10 +684,6 @@ function LoginPage({ theme, loginForm, setLoginForm, loggingIn, error, onLogin, 
             <span>{loggingIn ? '登录中' : '进入系统'}</span>
           </button>
         </form>
-        <button className="theme-toggle login-theme" onClick={onToggleTheme} type="button" title="Toggle theme">
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          <span>{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
-        </button>
       </section>
     </div>
   );
